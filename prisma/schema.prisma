@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model achievements {
+  id                Int                 @id @default(autoincrement())
+  title             String              @db.VarChar(100)
+  description       String?             @db.Text
+  conditions        String?             @db.VarChar(255)
+  created_at        DateTime?           @default(now()) @db.Timestamp(0)
+  updated_at        DateTime?           @default(now()) @db.Timestamp(0)
+  user_achievements user_achievements[]
+}
+
+model exercises {
+  id          Int       @id @default(autoincrement())
+  slug        String?   @unique(map: "slug") @db.VarChar(255)
+  title       String    @db.VarChar(255)
+  description String?   @db.Text
+  links       Json?
+  sort_order  Int?      @default(0)
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model languages {
+  id         Int       @id @default(autoincrement())
+  title      String    @db.VarChar(100)
+  code       String    @unique(map: "code") @db.VarChar(10)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  units      units[]
+}
+
+model leaderboards {
+  id         Int       @id @default(autoincrement())
+  user_id    Int
+  week_year  String    @db.VarChar(10)
+  xp         Int?      @default(0)
+  rank       Int?
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "leaderboards_ibfk_1")
+
+  @@unique([user_id, week_year], map: "user_id")
+}
+
+model lessons {
+  id          Int       @id @default(autoincrement())
+  unit_id     Int
+  name        String?   @db.VarChar(255)
+  external_id String?   @db.VarChar(255)
+  sort_order  Int
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @db.Timestamp(0)
+  units       units     @relation(fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "lessons_ibfk_1")
+
+  @@unique([unit_id, external_id], map: "unique_lesson")
+}
+
+model onboarding_options {
+  id                   Int                  @id @default(autoincrement())
+  question_id          Int
+  name                 String               @db.VarChar(100)
+  flag                 String?              @db.VarChar(10)
+  color                String?              @db.VarChar(20)
+  onboarding_questions onboarding_questions @relation(fields: [question_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "onboarding_options_ibfk_1")
+
+  @@index([question_id], map: "question_id")
+}
+
+model onboarding_questions {
+  id                 Int                  @id @default(autoincrement())
+  q_key              String               @unique(map: "q_key") @db.VarChar(50)
+  question           String               @db.Text
+  created_at         DateTime?            @default(now()) @db.Timestamp(0)
+  updated_at         DateTime?            @default(now()) @db.Timestamp(0)
+  onboarding_options onboarding_options[]
+}
+
+model units {
+  id          Int       @id @default(autoincrement())
+  language_id Int
+  name        String?   @db.VarChar(255)
+  external_id String?   @db.VarChar(255)
+  sort_order  Int
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @db.Timestamp(0)
+  lessons     lessons[]
+  languages   languages @relation(fields: [language_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "units_ibfk_1")
+
+  @@unique([language_id, external_id], map: "unique_unit")
+}
+
+model user_achievements {
+  id             Int          @id @default(autoincrement())
+  user_id        Int
+  achievement_id Int
+  unlocked_at    DateTime?    @default(now()) @db.Timestamp(0)
+  created_at     DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at     DateTime?    @default(now()) @db.Timestamp(0)
+  users          users        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_achievements_ibfk_1")
+  achievements   achievements @relation(fields: [achievement_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_achievements_ibfk_2")
+
+  @@unique([user_id, achievement_id], map: "user_id")
+  @@index([achievement_id], map: "achievement_id")
+}
+
+model user_progress {
+  id                       Int       @id @default(autoincrement())
+  user_id                  String    @unique(map: "user_id") @db.VarChar(50)
+  lang                     String    @db.VarChar(100)
+  last_completed_lesson_id String?   @db.VarChar(100)
+  updated_at               DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model user_stats {
+  id         Int       @id @default(autoincrement())
+  user_id    Int       @unique(map: "user_id")
+  xp         Int?      @default(0)
+  streak     Int?      @default(0)
+  gems       Int?      @default(0)
+  hearts     Int?      @default(5)
+  created_at DateTime? @default(now()) @db.Timestamp(0)
+  updated_at DateTime? @default(now()) @db.Timestamp(0)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "user_stats_ibfk_1")
+}
+
+model users {
+  id                Int                 @id @default(autoincrement())
+  name              String              @db.VarChar(100)
+  uid               String?             @db.VarChar(255)
+  email             String?             @unique(map: "email") @db.VarChar(150)
+  phone             String?             @unique(map: "phone") @db.VarChar(20)
+  password          String              @db.VarChar(255)
+  login_type        users_login_type?   @default(EMAIL)
+  refer_code        String?             @unique(map: "refer_code") @db.VarChar(50)
+  referred_by       String?             @db.VarChar(50)
+  profile           String?             @db.Text
+  fcm_token         String?             @db.Text
+  token             String?             @db.Text
+  otp               String?             @db.VarChar(10)
+  role              users_role?         @default(LEARNER)
+  created_at        DateTime?           @default(now()) @db.Timestamp(0)
+  updated_at        DateTime?           @default(now()) @db.Timestamp(0)
+  leaderboards      leaderboards[]
+  user_achievements user_achievements[]
+  user_stats        user_stats?
+}
+
+enum users_login_type {
+  EMAIL
+  PHONE
+  GOOGLE
+  FACEBOOK
+  APPLE
+}
+
+enum users_role {
+  CLIENT
+  PROFESSIONAL
+  ADMIN
+  LEARNER
+}
