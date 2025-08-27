@@ -29,7 +29,7 @@ const getHomeLangauge = async (req, res) => {
 
 
         const language = await prisma.languages.findFirst({
-            where: { title: learningLanguage },
+            where: { code: learningLanguage },
             include: {
                 units: {
                     orderBy: { sort_order: 'asc' },
