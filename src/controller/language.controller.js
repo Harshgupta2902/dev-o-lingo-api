@@ -72,4 +72,32 @@ const getHomeLangauge = async (req, res) => {
     }
 };
 
-module.exports = { getHomeLangauge };
+
+const getExercisesbyId = async (req, res) => {
+    try {
+        const { external_id } = req.body;
+
+        const exercises = await prisma.exercises.findFirst({
+            where: { slug: external_id },
+        });
+
+        if (!exercises) {
+            return res.status(404).json({ status: false, message: "No Exercises Found" });
+        }
+
+        return res.json({
+            status: true,
+            message: "Fetched exercises",
+            data: exercises
+        });
+
+
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ status: false, message: err.message });
+    }
+};
+
+
+
+module.exports = { getHomeLangauge,getExercisesbyId };
