@@ -132,25 +132,53 @@ model user_stats {
 }
 
 model users {
-  id                Int                 @id @default(autoincrement())
-  name              String              @db.VarChar(100)
-  uid               String?             @db.VarChar(255)
-  email             String?             @unique(map: "email") @db.VarChar(150)
-  phone             String?             @unique(map: "phone") @db.VarChar(20)
-  password          String              @db.VarChar(255)
-  login_type        users_login_type?   @default(EMAIL)
-  refer_code        String?             @unique(map: "refer_code") @db.VarChar(50)
-  referred_by       String?             @db.VarChar(50)
-  profile           String?             @db.Text
-  fcm_token         String?             @db.Text
-  token             String?             @db.Text
-  otp               String?             @db.VarChar(10)
-  role              users_role?         @default(LEARNER)
-  created_at        DateTime?           @default(now()) @db.Timestamp(0)
-  updated_at        DateTime?           @default(now()) @db.Timestamp(0)
-  leaderboards      leaderboards[]
-  user_achievements user_achievements[]
-  user_stats        user_stats?
+  id                   Int                    @id @default(autoincrement())
+  name                 String                 @db.VarChar(100)
+  uid                  String?                @db.VarChar(255)
+  email                String?                @unique(map: "email") @db.VarChar(150)
+  phone                String?                @unique(map: "phone") @db.VarChar(20)
+  password             String                 @db.VarChar(255)
+  login_type           users_login_type?      @default(EMAIL)
+  refer_code           String?                @unique(map: "refer_code") @db.VarChar(50)
+  referred_by          String?                @db.VarChar(50)
+  profile              String?                @db.Text
+  fcm_token            String?                @db.Text
+  token                String?                @db.Text
+  otp                  String?                @db.VarChar(10)
+  role                 users_role?            @default(LEARNER)
+  created_at           DateTime?              @default(now()) @db.Timestamp(0)
+  updated_at           DateTime?              @default(now()) @db.Timestamp(0)
+  leaderboards         leaderboards[]
+  onboarding_responses onboarding_responses[]
+  user_achievements    user_achievements[]
+  user_stats           user_stats?
+}
+
+model onboarding_answers {
+  id                   Int                  @id @default(autoincrement())
+  response_id          Int
+  question_key         String               @db.VarChar(100)
+  answer_value         String?              @db.Text
+  created_at           DateTime?            @default(now()) @db.Timestamp(0)
+  updated_at           DateTime?            @default(now()) @db.Timestamp(0)
+  onboarding_responses onboarding_responses @relation(fields: [response_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "onboarding_answers_ibfk_1")
+
+  @@index([response_id], map: "response_id")
+}
+
+model onboarding_responses {
+  id                 Int                  @id @default(autoincrement())
+  user_id            Int
+  build_no           String?              @db.VarChar(50)
+  build_signature    String?              @db.VarChar(255)
+  version            String?              @db.VarChar(50)
+  completed_at       DateTime             @db.DateTime(0)
+  created_at         DateTime?            @default(now()) @db.Timestamp(0)
+  updated_at         DateTime?            @default(now()) @db.Timestamp(0)
+  onboarding_answers onboarding_answers[]
+  users              users                @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "onboarding_responses_ibfk_1")
+
+  @@index([user_id], map: "user_id")
 }
 
 enum users_login_type {
