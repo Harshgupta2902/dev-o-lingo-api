@@ -181,6 +181,25 @@ model onboarding_responses {
   @@index([user_id], map: "user_id")
 }
 
+model questions {
+  id          Int       @id @default(autoincrement())
+  language_id Int
+  map_key     String    @db.VarChar(255)
+  title       String    @db.VarChar(255)
+  question    String    @db.Text
+  option_a    String    @db.VarChar(255)
+  option_b    String    @db.VarChar(255)
+  option_c    String    @db.VarChar(255)
+  option_d    String    @db.VarChar(255)
+  answer      String    @db.VarChar(255)
+  task1       String?   @db.Text
+  task2       String?   @db.Text
+  created_at  DateTime? @default(now()) @db.Timestamp(0)
+  updated_at  DateTime? @default(now()) @db.Timestamp(0)
+
+  @@index([map_key], map: "idx_questions_mapkey")
+}
+
 enum users_login_type {
   EMAIL
   PHONE
