@@ -154,6 +154,7 @@ model users {
   onboarding_responses onboarding_responses[]
   user_achievements    user_achievements[]
   user_stats           user_stats?
+  daily_practices      daily_practice[]
 }
 
 model onboarding_answers {
@@ -199,6 +200,7 @@ model questions {
   created_at  DateTime? @default(now()) @db.Timestamp(0)
   updated_at  DateTime? @default(now()) @db.Timestamp(0)
 
+  practice_items practice_item[] // ✅ back relation
   @@index([map_key], map: "idx_questions_mapkey")
 }
 
@@ -209,6 +211,38 @@ model game_settings {
   description String?   @db.Text
   created_at  DateTime? @default(now()) @db.Timestamp(0)
   updated_at  DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model daily_practice {
+  id           Int       @id @default(autoincrement())
+  user_id      Int
+  date         DateTime
+  status       String    @db.VarChar(20) // "assigned", "completed"
+  created_at   DateTime? @default(now())
+  completed_at DateTime?
+  earned_xp    Int?      @default(0)   // 👈 add this
+  earned_gems  Int?      @default(0)   // 👈 add this
+
+  items        practice_item[]
+
+  users users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@unique([user_id, date]) // only one per day
+}
+
+model practice_item {
+  id              Int       @id @default(autoincrement())
+  practice_id     Int
+  question_id     Int
+  question_status String    @db.VarChar(20) // "pending", "answered", "skipped"
+  user_answer     String?   @db.Text
+  is_correct      Boolean?
+  created_at      DateTime? @default(now())
+
+  daily_practice daily_practice @relation(fields: [practice_id], references: [id], onDelete: Cascade)
+  question       questions      @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  
 }
 
 enum users_login_type {
