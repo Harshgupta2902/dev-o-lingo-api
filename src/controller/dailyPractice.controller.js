@@ -79,7 +79,6 @@ const getTodayPractice = async (req, res) => {
         });
 
         if (!practice || practice.status === "completed") {
-            // auto assign
             return assignPractice(req, res);
         }
 
@@ -103,6 +102,10 @@ const submitPractice = async (req, res) => {
 
         if (!practice || practice.user_id !== userId) {
             return res.status(404).json({ status: false, message: "Practice not found" });
+        }
+
+        if( practice.status === "completed") {
+            return res.status(400).json({ status: false, message: "Practice already submitted" });
         }
 
         let correct = 0, wrong = 0, skipped = 0;
