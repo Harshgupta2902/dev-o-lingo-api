@@ -8,6 +8,7 @@ const {
   getPracticeHistory
 } = require("../controller/dailyPractice.controller");
 
+router.get("/daily-practice/assign", auth, assignPractice);
 router.get("/daily-practice/today", auth, getTodayPractice);
 router.post("/daily-practice/submit", auth, submitPractice);
 router.get("/daily-practice/history", auth, getPracticeHistory);

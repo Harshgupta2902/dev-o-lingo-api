@@ -1,6 +1,5 @@
 const prisma = require("../prismaClient");
 
-// 🔑 Assign new practice or return existing
 const assignPractice = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -22,6 +21,9 @@ const assignPractice = async (req, res) => {
         const progress = await prisma.user_progress.findUnique({ where: { user_id: userId } });
         if (!progress) return res.status(400).json({ status: false, message: "User progress not found" });
 
+
+        const questionsToBeAssigned = await prisma.game_settings.findUnique({ where: { key: "daily_practice_size" } });
+
         // fetch questions of this language, excluding already used
         const usedQuestions = await prisma.practice_item.findMany({
             where: { daily_practice: { user_id: userId } },
@@ -35,7 +37,7 @@ const assignPractice = async (req, res) => {
                 language_id: progress.language_id,
                 id: { notIn: excludeIds }
             },
-            take: 10 // limit
+            take: questionsToBeAssigned.value ?? 10
         });
 
         if (questions.length === 0) {
@@ -274,4 +276,6 @@ module.exports = {
     getTodayPractice,
     submitPractice,
     getPracticeHistory
+,
+assignPractice
 };
