@@ -1,9 +1,14 @@
 const prisma = require('../prismaClient');
 const jwt = require('jsonwebtoken');
 
-function generateToken(userId) {
-    return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: "7d" })
+function generateToken(user) {
+    return jwt.sign(
+        { id: user.id, email: user.email },
+        process.env.JWT_SECRET,
+        { expiresIn: "7d" }
+    );
 }
+
 
 const socialLogin = async (req, res) => {
     try {
@@ -13,7 +18,7 @@ const socialLogin = async (req, res) => {
             return res.status(400).json({ status: false, message: "uid and provider required" })
         }
 
-        let user = await prisma.users.create({
+        await prisma.users.create({
             data: {
                 uid,
                 name,
@@ -56,8 +61,7 @@ const fetchUserData = async (req, res) => {
             })
         }
 
-
-        const jwtToken = generateToken(user.id)
+        const jwtToken = generateToken(user)
 
         await prisma.users.update({
             where: { id: user.id },
