@@ -96,31 +96,6 @@ async function ensureProgress(userId) {
     return progress;
 }
 
-const getProgress = async (req, res) => {
-    try {
-        const userId = req.user.id;
-
-        // Make sure rows exist + apply refill
-        const stats = await ensureStatsWithRefill(userId);
-        const progress = await ensureProgress(userId);
-
-        return res.json({
-            status: true,
-            message: "Fetched user progress",
-            data: {
-                xp: stats.xp ?? 0,
-                streak: stats.streak ?? 0,
-                gems: stats.gems ?? 0,
-                hearts: stats.hearts ?? 0,
-                lastCompletedLessonId: progress.last_completed_lesson_id ?? null
-            }
-        });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ status: false, message: err.message });
-    }
-};
-
 const completeLesson = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -168,53 +143,71 @@ const completeLesson = async (req, res) => {
 };
 
 const checkStreak = async (req, res) => {
-  try {
-    const userId = req.user.id;
+    try {
+        const userId = req.user.id;
 
-    const stats = await ensureStatsWithRefill(userId);
-    const progress = await ensureProgress(userId);
+        const stats = await ensureStatsWithRefill(userId);
+        const progress = await ensureProgress(userId);
 
-    const lastLessonDate = progress.updated_at ? new Date(progress.updated_at) : null;
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
+        const lastLessonDate = progress.updated_at ? new Date(progress.updated_at) : null;
+        const today = new Date();
+        const yesterday = new Date();
+        yesterday.setDate(today.getDate() - 1);
 
-    let streak = stats.streak || 0;
+        let streak = stats.streak || 0;
 
-    // Only increment if we haven't updated streak today
-    const alreadyUpdatedToday =
-      stats.last_streak_date &&
-      new Date(stats.last_streak_date).toDateString() === today.toDateString();
+        // Only increment if we haven't updated streak today
+        const alreadyUpdatedToday =
+            stats.last_streak_date &&
+            new Date(stats.last_streak_date).toDateString() === today.toDateString();
 
-    if (!alreadyUpdatedToday && lastLessonDate) {
-      if (
-        lastLessonDate.toDateString() === today.toDateString() ||
-        lastLessonDate.toDateString() === yesterday.toDateString()
-      ) {
-        streak += 1;
-      } else {
-        streak = 0;
-      }
+        if (!alreadyUpdatedToday && lastLessonDate) {
+            if (
+                lastLessonDate.toDateString() === today.toDateString() ||
+                lastLessonDate.toDateString() === yesterday.toDateString()
+            ) {
+                streak += 1;
+            } else {
+                streak = 0;
+            }
+        }
+
+        const updatedStats = await prisma.user_stats.update({
+            where: { user_id: userId },
+            data: {
+                streak,
+                last_streak_date: today,
+                updated_at: today
+            }
+        });
+
+        return res.json({
+            status: true,
+            message: "Streak checked",
+            data: { streak: updatedStats.streak }
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ status: false, message: err.message });
     }
-
-    const updatedStats = await prisma.user_stats.update({
-      where: { user_id: userId },
-      data: {
-        streak,
-        last_streak_date: today,
-        updated_at: today
-      }
-    });
-
-    return res.json({
-      status: true,
-      message: "Streak checked",
-      data: { streak: updatedStats.streak }
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ status: false, message: err.message });
-  }
 };
 
-module.exports = { getProgress, completeLesson, checkStreak };
+const getUserStats = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const stats = await ensureStatsWithRefill(userId);
+
+        return res.json({
+            status: true,
+            message: "User Stats Fetched",
+            data: stats
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ status: false, message: err.message });
+    }
+};
+
+
+module.exports = { ensureStatsWithRefill, ensureProgress, completeLesson, checkStreak, getUserStats };

@@ -1,5 +1,6 @@
 const prisma = require('../prismaClient');
 const jwt = require('jsonwebtoken');
+const { ensureStatsWithRefill } = require('./progress.controller');
 
 function generateToken(user) {
     return jwt.sign(
@@ -161,4 +162,52 @@ const submitOnboarding = async (req, res) => {
     }
 };
 
-module.exports = { socialLogin, fetchUserData, updateFcmToken, getOnboardingQuestions, submitOnboarding }
+
+const getUserProfile = async (req, res) => {
+    try {
+        const { email } = req.body
+
+        if (!email) {
+            return res.status(400).json({ status: false, message: "email required" })
+        }
+
+        const user = await prisma.users.findFirst({
+            where: { email },
+        });
+
+        if (!user) {
+            return res.json({
+                status: false,
+                code: "USER_NOT_FOUND",
+                message: "User not found"
+            })
+        }
+
+        const jwtToken = generateToken(user)
+
+        await prisma.users.update({
+            where: { id: user.id },
+            data: { token: jwtToken },
+        })
+
+        const formattedUser = {
+            ...user,
+            created_at: new Date(user.created_at).toLocaleDateString("en-GB", {
+                day: "numeric",   // 2
+                month: "short",   // Sep
+                year: "numeric"   // 2025
+            })
+        };
+
+        const stats = await ensureStatsWithRefill(Number(user.id));
+        return res.json({
+            status: true,
+            message: "User Fetched successfully",
+            data: { jwtToken, user: formattedUser, stats, },
+        })
+    } catch (err) {
+        return res.status(500).json({ status: false, message: err.message })
+    }
+}
+
+module.exports = { socialLogin, fetchUserData, updateFcmToken, getOnboardingQuestions, submitOnboarding, getUserProfile }

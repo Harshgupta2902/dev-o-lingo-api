@@ -1,4 +1,5 @@
 const prisma = require('../prismaClient');
+const { ensureProgress, ensureStatsWithRefill } = require('./progress.controller');
 
 const getHomeLangauge = async (req, res) => {
     try {
@@ -54,10 +55,16 @@ const getHomeLangauge = async (req, res) => {
             })),
         }));
 
+        const progress = await ensureProgress(Number(user.id));
+        const stats = await ensureStatsWithRefill(Number(user.id));
+
+
         return res.json({
             status: true,
             message: "Fetched language units and lessons",
             data: {
+                stats: stats,
+                lastCompletedLessonId: Number(progress.last_completed_lesson_id) ?? 0,
                 languageId: language.id,
                 languageTitle: language.title,
                 unitCount: language.units.length,
