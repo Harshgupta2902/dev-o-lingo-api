@@ -96,52 +96,6 @@ async function ensureProgress(userId) {
     return progress;
 }
 
-const completeLesson = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const { lessonId } = req.body;
-
-        const s = await getSettings();
-
-        const lesson = await prisma.lessons.findUnique({ where: { id: Number(lessonId) } });
-        if (!lesson) return res.status(404).json({ status: false, message: "Lesson not found" });
-
-        // ensure rows exist first
-        await ensureStatsWithRefill(userId);
-        await ensureProgress(userId);
-
-        await prisma.user_progress.update({
-            where: { user_id: userId },
-            data: {
-                last_completed_lesson_id: String(lessonId),
-                updated_at: new Date()
-            }
-        });
-
-
-        const updatedStats = await prisma.user_stats.update({
-            where: { user_id: userId },
-            data: {
-                xp: { increment: s.xp_per_lesson },
-                updated_at: new Date()
-            }
-        });
-
-        return res.json({
-            status: true,
-            message: "Lesson marked complete",
-            data: {
-                lessonId: Number(lessonId),
-                xpEarned: s.xp_per_lesson,
-                newXp: updatedStats.xp
-            }
-        });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ status: false, message: err.message });
-    }
-};
-
 const checkStreak = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -210,4 +164,4 @@ const getUserStats = async (req, res) => {
 };
 
 
-module.exports = { ensureStatsWithRefill, ensureProgress, completeLesson, checkStreak, getUserStats };
+module.exports = { ensureStatsWithRefill, ensureProgress, checkStreak, getUserStats };

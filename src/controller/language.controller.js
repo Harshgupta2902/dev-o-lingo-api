@@ -9,7 +9,7 @@ const getHomeLangauge = async (req, res) => {
             where: { email },
             include: {
                 onboarding_responses: {
-                    orderBy: { created_at: 'desc' }, // latest response
+                    orderBy: { created_at: 'desc' },
                     take: 1,
                     include: {
                         onboarding_answers: {
@@ -148,7 +148,134 @@ const getExercisesbyId = async (req, res) => {
     }
 };
 
+const submitLesson = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { lessonId, answers, timeTaken } = req.body;
+
+        const lesson = await prisma.lessons.findUnique({
+            where: { id: lessonId },
+            include: { units: true },
+        });
+
+        if (!lesson) {
+            return res.status(404).json({ status: false, message: "Lesson not found" });
+        }
+
+        const questions = await prisma.questions.findMany({
+            where: { map_key: lesson.external_id },
+        });
+
+        if (!questions.length) {
+            return res.json({
+                status: true,
+                message: "Lesson has no questions",
+                data: { correctCount: 0, wrongCount: 0, earnedXP: 0, earnedGems: 0, heartsLeft: 5, percentage: 0, tagline: "No questions in this lesson" },
+            });
+        }
+
+        // ✅ Compare answers
+        let correctCount = 0;
+        let wrongCount = 0;
+
+        questions.forEach((q, idx) => {
+            const userAnswer = answers[idx];
+            const isCorrect = userAnswer?.trim().toLowerCase() === q.answer.trim().toLowerCase();
+            if (isCorrect) correctCount++;
+            else wrongCount++;
+        });
+
+        const xpPerCorrect = parseInt(
+            (await prisma.game_settings.findUnique({ where: { key: "xp_per_correct" } }))
+                ?.value || "10"
+        );
+        const gemsPerCorrect = parseInt(
+            (await prisma.game_settings.findUnique({ where: { key: "gems_per_correct" } }))
+                ?.value || "1"
+        );
+        const heartPenalty = parseInt(
+            (await prisma.game_settings.findUnique({ where: { key: "heart_penalty" } }))
+                ?.value || "1"
+        );
+
+        const earnedXP = correctCount * xpPerCorrect;
+        const earnedGems = correctCount * gemsPerCorrect;
+
+        const updatedStats = await prisma.user_stats.upsert({
+            where: { user_id: userId },
+            update: {
+                xp: { increment: earnedXP },
+                gems: { increment: earnedGems },
+                hearts: { decrement: wrongCount * heartPenalty },
+            },
+            create: {
+                user_id: userId,
+                xp: earnedXP,
+                gems: earnedGems,
+                hearts: 5 - wrongCount * heartPenalty,
+            },
+        });
+
+        const heartsLeft = Math.max(0, updatedStats.hearts);
+
+        await prisma.user_progress.upsert({
+            where: { user_id: userId },
+            update: { last_completed_lesson_id: String(lessonId) },
+            create: {
+                user_id: userId,
+                lang: lesson.units.language_id.toString(),
+                last_completed_lesson_id: String(lessonId),
+            },
+        });
+
+        // ✅ Percentage score
+        const totalQuestions = questions.length;
+        const percentage = Math.round((correctCount / totalQuestions) * 100);
+
+        let accuracyTagline = "";
+        if (percentage === 100) accuracyTagline = "🌟 Perfect! You're a master!";
+        else if (percentage >= 80) accuracyTagline = "💯 Awesome! Keep it up!";
+        else if (percentage >= 60) accuracyTagline = "👍 Good job, practice more!";
+        else if (percentage >= 40) accuracyTagline = "🙂 Not bad, keep practicing!";
+        else accuracyTagline = "💪 Don’t give up! Try again!";
+
+        // Time tagline
+        const formattedTime = formatTime(timeTaken || 0);
+        let speedTagline = "";
+        if (timeTaken < 60000) speedTagline = "⚡ Lightning fast!";
+        else if (timeTaken < 180000) speedTagline = "⏱ Great speed!";
+        else if (timeTaken < 300000) speedTagline = "🙂 Steady pace!";
+        else speedTagline = "🐢 Slow and steady, keep practicing!";
+
+        return res.json({
+            status: true,
+            message: "Lesson submitted",
+            data: {
+                correctCount,
+                wrongCount,
+                earnedXP,
+                earnedGems,
+                heartsLeft: heartsLeft,
+                percentage,
+                tagline: {
+                    title: accuracyTagline,
+                    desc: speedTagline
+                },
+                time: formattedTime,
+            },
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ status: false, message: err.message });
+    }
+};
+
+function formatTime(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
 
 
-
-module.exports = { getHomeLangauge, getExercisesbyId };
+module.exports = { getHomeLangauge, getExercisesbyId, submitLesson };
