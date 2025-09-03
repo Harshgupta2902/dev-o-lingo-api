@@ -118,7 +118,7 @@ const getExercisesbyId = async (req, res) => {
             task2: questions[0].task2,
         };
 
-        const questionList = questions.map((q) => ({
+        let questionList = questions.map((q) => ({
             id: q.id,
             language_id: q.language_id,
             map_key: q.map_key,
