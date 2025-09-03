@@ -164,7 +164,9 @@ const submitLesson = async (req, res) => {
                 include: { units: true },
             }),
             prisma.questions.findMany({
-                where: { map_key: (await prisma.lessons.findUnique({ where: { id: lessonId } }))?.external_id },
+                where: {
+                    map_key: (await prisma.lessons.findUnique({ where: { id: lessonId } }))?.external_id,
+                },
             }),
             prisma.game_settings.findMany({
                 where: { key: { in: ["xp_per_correct", "gems_per_correct", "heart_penalty"] } },
@@ -193,21 +195,18 @@ const submitLesson = async (req, res) => {
         }
 
         // settings map with defaults
-        const settings = settingsRows.reduce((m, r) => (m[r.key] = r.value, m), {});
+        const settings = settingsRows.reduce((m, r) => ((m[r.key] = r.value), m), {});
         const xpPerCorrect = parseInt(settings["xp_per_correct"] ?? "10", 10);
         const gemsPerCorrect = parseInt(settings["gems_per_correct"] ?? "1", 10);
         const heartPenalty = parseInt(settings["heart_penalty"] ?? "1", 10);
 
-        // compare answers (new: answers keyed by question id; fallback: index-based)
+        // compare answers
         let correctCount = 0;
         let wrongCount = 0;
 
         questions.forEach((q, idx) => {
-            // preferred: by q.id as key (sent as string or number)
             const byId = answers?.[q.id] ?? answers?.[String(q.id)];
-            // fallback: old style array/object using 0,1,2... as keys
             const byIdx = answers?.[idx] ?? answers?.[String(idx)];
-
             const userAnswerRaw = byId ?? byIdx ?? "";
             const isCorrect = normalize(userAnswerRaw) === normalize(q.answer);
             if (isCorrect) correctCount++;
@@ -217,41 +216,66 @@ const submitLesson = async (req, res) => {
         const earnedXP = correctCount * xpPerCorrect;
         const earnedGems = correctCount * gemsPerCorrect;
 
-        // upsert stats; clamp hearts to >= 0
-        // first read current (if any), compute new, then upsert
+        // progress check
+        const existingProgress = await prisma.user_progress.findUnique({
+            where: { user_id: userId },
+        });
+
+        const lastCompleted = existingProgress
+            ? Number(existingProgress.last_completed_lesson_id)
+            : null;
+        const isNewLesson = !lastCompleted || lessonId > lastCompleted;
+
+        // stats update
         const existingStats = await prisma.user_stats.findUnique({ where: { user_id: userId } });
         const currentHearts = existingStats?.hearts ?? 5;
         const newHearts = Math.max(0, currentHearts - wrongCount * heartPenalty);
 
-        const updatedStats = await prisma.user_stats.upsert({
-            where: { user_id: userId },
-            update: {
-                xp: { increment: earnedXP },
-                gems: { increment: earnedGems },
-                hearts: newHearts,
-                updated_at: new Date(),
-            },
-            create: {
-                user_id: userId,
-                xp: earnedXP,
-                gems: earnedGems,
-                hearts: newHearts, // start from base (assumes fresh user has 5)
-                created_at: new Date(),
-                updated_at: new Date(),
-            },
-        });
+        let updatedStats;
+        if (isNewLesson) {
+            // update xp + gems + hearts
+            updatedStats = await prisma.user_stats.upsert({
+                where: { user_id: userId },
+                update: {
+                    xp: { increment: earnedXP },
+                    gems: { increment: earnedGems },
+                    hearts: newHearts,
+                    updated_at: new Date(),
+                },
+                create: {
+                    user_id: userId,
+                    xp: earnedXP,
+                    gems: earnedGems,
+                    hearts: newHearts,
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                },
+            });
 
-        // progress
-        await prisma.user_progress.upsert({
-            where: { user_id: userId },
-            update: { last_completed_lesson_id: String(lessonId), updated_at: new Date() },
-            create: {
-                user_id: userId,
-                lang: String(lesson.units.language_id),
-                last_completed_lesson_id: String(lessonId),
-                updated_at: new Date(),
-            },
-        });
+            // update progress
+            await prisma.user_progress.upsert({
+                where: { user_id: userId },
+                update: {
+                    last_completed_lesson_id: String(lessonId),
+                    updated_at: new Date(),
+                },
+                create: {
+                    user_id: userId,
+                    lang: String(lesson.units.language_id),
+                    last_completed_lesson_id: String(lessonId),
+                    updated_at: new Date(),
+                },
+            });
+        } else {
+            // only update hearts
+            updatedStats = await prisma.user_stats.update({
+                where: { user_id: userId },
+                data: {
+                    hearts: newHearts,
+                    updated_at: new Date(),
+                },
+            });
+        }
 
         // score + taglines
         const totalQuestions = questions.length;
@@ -277,8 +301,8 @@ const submitLesson = async (req, res) => {
             data: {
                 correctCount,
                 wrongCount,
-                earnedXP,
-                earnedGems,
+                earnedXP: isNewLesson ? earnedXP : 0,
+                earnedGems: isNewLesson ? earnedGems : 0,
                 heartsLeft: updatedStats.hearts,
                 percentage,
                 tagline: { title: accuracyTagline, desc: speedTagline },
@@ -290,6 +314,7 @@ const submitLesson = async (req, res) => {
         return res.status(500).json({ status: false, message: err.message });
     }
 };
+
 
 
 function formatTime(ms) {
