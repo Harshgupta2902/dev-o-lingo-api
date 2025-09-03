@@ -84,7 +84,12 @@ const getExercisesbyId = async (req, res) => {
     try {
         const { external_id } = req.body;
 
-        // 1) Exercise fetch
+        if (!external_id) {
+            return res
+                .status(404)
+                .json({ status: false, message: "No ID Found" });
+        }
+
         const exercise = await prisma.exercises.findFirst({
             where: { slug: external_id },
         });
@@ -95,7 +100,6 @@ const getExercisesbyId = async (req, res) => {
                 .json({ status: false, message: "No Exercise Found" });
         }
 
-        // 2) Questions fetch
         const questions = await prisma.questions.findMany({
             where: { map_key: external_id },
             orderBy: { id: "asc" },
@@ -109,13 +113,11 @@ const getExercisesbyId = async (req, res) => {
             });
         }
 
-        // 3) Practical tasks → ek hi baar nikal lo (maan kar sabhi me same hain)
         const tasks = {
             task1: questions[0].task1,
             task2: questions[0].task2,
         };
 
-        // 4) Questions array se tasks remove karo
         const questionList = questions.map((q) => ({
             id: q.id,
             language_id: q.language_id,
@@ -130,7 +132,8 @@ const getExercisesbyId = async (req, res) => {
             updated_at: q.updated_at,
         }));
 
-        // 5) Final response
+        questionList = shuffleArray(questionList);
+
         return res.json({
             status: true,
             message: "Fetched exercise with questions",
@@ -151,84 +154,106 @@ const getExercisesbyId = async (req, res) => {
 const submitLesson = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { lessonId, answers, timeTaken } = req.body;
+        const { lessonId: lessonIdRaw, answers = {}, timeTaken = 0 } = req.body;
 
-        const lesson = await prisma.lessons.findUnique({
-            where: { id: lessonId },
-            include: { units: true },
-        });
+        const lessonId = Number(lessonIdRaw);
+
+        const [lesson, questions, settingsRows] = await Promise.all([
+            prisma.lessons.findUnique({
+                where: { id: lessonId },
+                include: { units: true },
+            }),
+            prisma.questions.findMany({
+                where: { map_key: (await prisma.lessons.findUnique({ where: { id: lessonId } }))?.external_id },
+            }),
+            prisma.game_settings.findMany({
+                where: { key: { in: ["xp_per_correct", "gems_per_correct", "heart_penalty"] } },
+            }),
+        ]);
 
         if (!lesson) {
             return res.status(404).json({ status: false, message: "Lesson not found" });
         }
 
-        const questions = await prisma.questions.findMany({
-            where: { map_key: lesson.external_id },
-        });
-
         if (!questions.length) {
             return res.json({
                 status: true,
                 message: "Lesson has no questions",
-                data: { correctCount: 0, wrongCount: 0, earnedXP: 0, earnedGems: 0, heartsLeft: 5, percentage: 0, tagline: "No questions in this lesson" },
+                data: {
+                    correctCount: 0,
+                    wrongCount: 0,
+                    earnedXP: 0,
+                    earnedGems: 0,
+                    heartsLeft: 5,
+                    percentage: 0,
+                    tagline: { title: "No questions in this lesson", desc: "" },
+                    time: formatTime(timeTaken),
+                },
             });
         }
 
-        // ✅ Compare answers
+        // settings map with defaults
+        const settings = settingsRows.reduce((m, r) => (m[r.key] = r.value, m), {});
+        const xpPerCorrect = parseInt(settings["xp_per_correct"] ?? "10", 10);
+        const gemsPerCorrect = parseInt(settings["gems_per_correct"] ?? "1", 10);
+        const heartPenalty = parseInt(settings["heart_penalty"] ?? "1", 10);
+
+        // compare answers (new: answers keyed by question id; fallback: index-based)
         let correctCount = 0;
         let wrongCount = 0;
 
         questions.forEach((q, idx) => {
-            const userAnswer = answers[idx];
-            const isCorrect = userAnswer?.trim().toLowerCase() === q.answer.trim().toLowerCase();
+            // preferred: by q.id as key (sent as string or number)
+            const byId = answers?.[q.id] ?? answers?.[String(q.id)];
+            // fallback: old style array/object using 0,1,2... as keys
+            const byIdx = answers?.[idx] ?? answers?.[String(idx)];
+
+            const userAnswerRaw = byId ?? byIdx ?? "";
+            const isCorrect = normalize(userAnswerRaw) === normalize(q.answer);
             if (isCorrect) correctCount++;
             else wrongCount++;
         });
 
-        const xpPerCorrect = parseInt(
-            (await prisma.game_settings.findUnique({ where: { key: "xp_per_correct" } }))
-                ?.value || "10"
-        );
-        const gemsPerCorrect = parseInt(
-            (await prisma.game_settings.findUnique({ where: { key: "gems_per_correct" } }))
-                ?.value || "1"
-        );
-        const heartPenalty = parseInt(
-            (await prisma.game_settings.findUnique({ where: { key: "heart_penalty" } }))
-                ?.value || "1"
-        );
-
         const earnedXP = correctCount * xpPerCorrect;
         const earnedGems = correctCount * gemsPerCorrect;
+
+        // upsert stats; clamp hearts to >= 0
+        // first read current (if any), compute new, then upsert
+        const existingStats = await prisma.user_stats.findUnique({ where: { user_id: userId } });
+        const currentHearts = existingStats?.hearts ?? 5;
+        const newHearts = Math.max(0, currentHearts - wrongCount * heartPenalty);
 
         const updatedStats = await prisma.user_stats.upsert({
             where: { user_id: userId },
             update: {
                 xp: { increment: earnedXP },
                 gems: { increment: earnedGems },
-                hearts: { decrement: wrongCount * heartPenalty },
+                hearts: newHearts,
+                updated_at: new Date(),
             },
             create: {
                 user_id: userId,
                 xp: earnedXP,
                 gems: earnedGems,
-                hearts: 5 - wrongCount * heartPenalty,
+                hearts: newHearts, // start from base (assumes fresh user has 5)
+                created_at: new Date(),
+                updated_at: new Date(),
             },
         });
 
-        const heartsLeft = Math.max(0, updatedStats.hearts);
-
+        // progress
         await prisma.user_progress.upsert({
             where: { user_id: userId },
-            update: { last_completed_lesson_id: String(lessonId) },
+            update: { last_completed_lesson_id: String(lessonId), updated_at: new Date() },
             create: {
                 user_id: userId,
-                lang: lesson.units.language_id.toString(),
+                lang: String(lesson.units.language_id),
                 last_completed_lesson_id: String(lessonId),
+                updated_at: new Date(),
             },
         });
 
-        // ✅ Percentage score
+        // score + taglines
         const totalQuestions = questions.length;
         const percentage = Math.round((correctCount / totalQuestions) * 100);
 
@@ -239,12 +264,11 @@ const submitLesson = async (req, res) => {
         else if (percentage >= 40) accuracyTagline = "🙂 Not bad, keep practicing!";
         else accuracyTagline = "💪 Don’t give up! Try again!";
 
-        // Time tagline
         const formattedTime = formatTime(timeTaken || 0);
         let speedTagline = "";
-        if (timeTaken < 60000) speedTagline = "⚡ Lightning fast!";
-        else if (timeTaken < 180000) speedTagline = "⏱ Great speed!";
-        else if (timeTaken < 300000) speedTagline = "🙂 Steady pace!";
+        if (timeTaken < 60_000) speedTagline = "⚡ Lightning fast!";
+        else if (timeTaken < 180_000) speedTagline = "⏱ Great speed!";
+        else if (timeTaken < 300_000) speedTagline = "🙂 Steady pace!";
         else speedTagline = "🐢 Slow and steady, keep practicing!";
 
         return res.json({
@@ -255,12 +279,9 @@ const submitLesson = async (req, res) => {
                 wrongCount,
                 earnedXP,
                 earnedGems,
-                heartsLeft: heartsLeft,
+                heartsLeft: updatedStats.hearts,
                 percentage,
-                tagline: {
-                    title: accuracyTagline,
-                    desc: speedTagline
-                },
+                tagline: { title: accuracyTagline, desc: speedTagline },
                 time: formattedTime,
             },
         });
@@ -270,12 +291,21 @@ const submitLesson = async (req, res) => {
     }
 };
 
+
 function formatTime(ms) {
     const totalSeconds = Math.floor(ms / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
+const normalize = (s) => (typeof s === "string" ? s.trim().toLowerCase() : "");
 
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+}
 
 module.exports = { getHomeLangauge, getExercisesbyId, submitLesson };
