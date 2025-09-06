@@ -1,4 +1,5 @@
 const prisma = require("../prismaClient");
+const { updateLeaderboard } = require("./leaderboard.controller");
 
 const assignPractice = async (req, res) => {
     try {
@@ -106,7 +107,7 @@ const submitPractice = async (req, res) => {
             return res.status(404).json({ status: false, message: "Practice not found" });
         }
 
-        if( practice.status === "completed") {
+        if (practice.status === "completed") {
             return res.status(400).json({ status: false, message: "Practice already submitted" });
         }
 
@@ -187,12 +188,17 @@ const submitPractice = async (req, res) => {
         await prisma.daily_practice.update({
             where: { id: practiceId },
             data: {
-                status: "completed", 
+                status: "completed",
                 completed_at: new Date(),
                 earned_xp: earnedXp,
                 earned_gems: earnedGems
             }
         });
+
+        await updateLeaderboard(userId, earnedXp);
+        await checkFirstCorrect(userId);
+
+
 
         return res.json({
             status: true,
@@ -246,8 +252,8 @@ const getPracticeHistory = async (req, res) => {
                 date: practice.date,
                 status: practice.status,
                 completed_at: practice.completed_at,
-                earned_xp: practice.earned_xp || 0,      
-                earned_gems: practice.earned_gems || 0,  
+                earned_xp: practice.earned_xp || 0,
+                earned_gems: practice.earned_gems || 0,
                 score: `${correct}/${total}`,
                 summary: {
                     total,
@@ -275,7 +281,6 @@ const getPracticeHistory = async (req, res) => {
 module.exports = {
     getTodayPractice,
     submitPractice,
-    getPracticeHistory
-,
-assignPractice
+    getPracticeHistory,
+    assignPractice
 };

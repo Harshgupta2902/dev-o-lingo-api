@@ -1,5 +1,6 @@
 const express = require('express');
 const mainRoutes = require('./routes/routes');
+require('./jobs/scheduler');
 
 const app = express();
 

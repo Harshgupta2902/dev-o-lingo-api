@@ -17,6 +17,21 @@ model achievements {
   user_achievements user_achievements[]
 }
 
+model user_completed_lessons {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  lesson_id   Int
+  completed_at DateTime @default(now())
+
+  users  users   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  lessons lessons @relation(fields: [lesson_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, lesson_id], map: "user_lesson_unique")
+  @@index([user_id])
+  @@index([lesson_id])
+}
+
+
 model exercises {
   id          Int       @id @default(autoincrement())
   slug        String?   @unique(map: "slug") @db.VarChar(255)
@@ -59,7 +74,7 @@ model lessons {
   created_at  DateTime? @default(now()) @db.Timestamp(0)
   updated_at  DateTime? @default(now()) @db.Timestamp(0)
   units       units     @relation(fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "lessons_ibfk_1")
-
+  user_completed_lessons user_completed_lessons[] // ✅ back relation
   @@unique([unit_id, external_id], map: "unique_lesson")
 }
 
@@ -155,6 +170,7 @@ model users {
   user_achievements    user_achievements[]
   user_stats           user_stats?
   daily_practices      daily_practice[]
+  user_completed_lessons user_completed_lessons[]
 }
 
 model onboarding_answers {

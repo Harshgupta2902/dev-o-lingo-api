@@ -1,4 +1,6 @@
 const prisma = require('../prismaClient');
+const { checkAchievements } = require('./achievement.controller');
+const { updateLeaderboard } = require('./leaderboard.controller');
 const { ensureProgress, ensureStatsWithRefill } = require('./progress.controller');
 
 const getHomeLangauge = async (req, res) => {
@@ -266,6 +268,13 @@ const submitLesson = async (req, res) => {
                     updated_at: new Date(),
                 },
             });
+
+            // ✅ Track completed lesson in new table
+            await prisma.user_completed_lessons.upsert({
+                where: { user_id_lesson_id: { user_id: userId, lesson_id: lessonId } },
+                update: {},
+                create: { user_id: userId, lesson_id: lessonId },
+            });
         } else {
             // only update hearts
             updatedStats = await prisma.user_stats.update({
@@ -294,6 +303,10 @@ const submitLesson = async (req, res) => {
         else if (timeTaken < 180_000) speedTagline = "⏱ Great speed!";
         else if (timeTaken < 300_000) speedTagline = "🙂 Steady pace!";
         else speedTagline = "🐢 Slow and steady, keep practicing!";
+
+        // ✅ Update leaderboard & achievements
+        await updateLeaderboard(userId, earnedXP);
+        await checkAchievements(userId);
 
         return res.json({
             status: true,

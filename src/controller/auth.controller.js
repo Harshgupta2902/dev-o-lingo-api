@@ -5,8 +5,7 @@ const { ensureStatsWithRefill } = require('./progress.controller');
 function generateToken(user) {
     return jwt.sign(
         { id: user.id, email: user.email },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
+        process.env.JWT_SECRET
     );
 }
 
@@ -183,13 +182,6 @@ const getUserProfile = async (req, res) => {
             })
         }
 
-        const jwtToken = generateToken(user)
-
-        await prisma.users.update({
-            where: { id: user.id },
-            data: { token: jwtToken },
-        })
-
         const formattedUser = {
             ...user,
             created_at: new Date(user.created_at).toLocaleDateString("en-GB", {
@@ -203,7 +195,7 @@ const getUserProfile = async (req, res) => {
         return res.json({
             status: true,
             message: "User Fetched successfully",
-            data: { jwtToken, user: formattedUser, stats, },
+            data: { user: formattedUser, stats, },
         })
     } catch (err) {
         return res.status(500).json({ status: false, message: err.message })
