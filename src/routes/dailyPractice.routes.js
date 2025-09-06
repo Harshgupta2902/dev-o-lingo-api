@@ -2,15 +2,14 @@ const express = require("express");
 const router = express.Router();
 const auth = require("../middleware");
 const {
-  assignPractice,
-  getTodayPractice,
+  getPracticeById,
   submitPractice,
-  getPracticeHistory
+  getWeek,
 } = require("../controller/dailyPractice.controller");
 
-router.get("/daily-practice/assign", auth, assignPractice);
-router.get("/daily-practice/today", auth, getTodayPractice);
+
+router.get("/daily-practice/week", auth, getWeek);
+router.post("/get-daily-practice", auth, getPracticeById);
 router.post("/daily-practice/submit", auth, submitPractice);
-router.get("/daily-practice/history", auth, getPracticeHistory);
 
 module.exports = router;
