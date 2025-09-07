@@ -2,52 +2,34 @@ const dayjs = require("dayjs");
 const prisma = require("../prismaClient");
 const { updateLeaderboard } = require("./leaderboard.controller");
 
-function ymd(d = new Date()) { return dayjs(d).format("YYYY-MM-DD"); }
-function toDateOnly(s) { return new Date(`${s}T00:00:00.000Z`); }
-
-function buildWeekDates({ full = false } = {}) {
-    const today = dayjs();
-    const dow = today.day();
-    const isoDow = dow === 0 ? 7 : dow;
-
-    const startOfWeek = today.subtract(isoDow - 1, "day");
-    const endOfWeek = startOfWeek.add(6, "day");
-
-    let start = full ? startOfWeek : today;
-    const days = endOfWeek.diff(start, "day") + 1;
-
-    return Array.from({ length: days }, (_, i) => start.add(i, "day").format("YYYY-MM-DD"));
+function ymd(d = new Date()) {
+    return dayjs(d).format("YYYY-MM-DD");
 }
-
-
-async function resolveLanguageId(progress) {
-    if (progress?.language_id) return Number(progress.language_id);
-    if (progress?.lang) {
-        const lang = await prisma.languages.findFirst({ where: { code: progress.lang } });
-        return lang?.id || 0;
-    }
-    return 0;
+function toDateOnly(s) {
+    // 00:00:00 UTC (date-only)
+    return new Date(`${s}T00:00:00.000Z`);
 }
-
-async function pickQuestions(languageId, limit, excludeIds = []) {
-    return prisma.questions.findMany({
-        where: { language_id: languageId, id: { notIn: excludeIds } },
-        orderBy: { id: "asc" },
-        take: limit,
-    });
+function startOfWeek(d = dayjs()) {
+    // Monday as start (0=Sun, 1=Mon) -> shift to Monday
+    const dow = d.day(); // 0..6 (Sun..Sat)
+    const delta = (dow + 6) % 7; // days since Monday
+    return d.subtract(delta, "day").startOf("day");
 }
-
-function shortAgo(date) {
-    if (!date) return null;
-    const diffMin = dayjs().diff(dayjs(date), "minute");
-    if (diffMin < 1) return "now";
-    if (diffMin < 60) return `${diffMin}m`;
-    const diffHr = Math.floor(diffMin / 60);
-    if (diffHr < 24) return `${diffHr}h`;
-    const diffDay = Math.floor(diffHr / 24);
-    if (diffDay < 7) return `${diffDay}d`;
-    const diffW = Math.floor(diffDay / 7);
-    return `${diffW}w`;
+function buildWeekDates() {
+    const start = startOfWeek(dayjs());
+    return Array.from({ length: 7 }, (_, i) => start.add(i, "day").format("YYYY-MM-DD"));
+}
+function shortAgo(dt) {
+    const a = dayjs();
+    const b = dayjs(dt);
+    const sec = a.diff(b, "second");
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const d = Math.floor(hr / 24);
+    return `${d}d ago`;
 }
 
 const getWeek = async (req, res) => {
@@ -55,19 +37,17 @@ const getWeek = async (req, res) => {
         const userId = req.user.id;
         const todayStr = ymd();
 
-        // 👇 if you want whole week always, hit /daily-practice/week?full=1
-        const wantFull = String(req.query.full || "").trim() === "1";
-        const dates = buildWeekDates({ full: wantFull });
-        const dateObjs = dates.map(toDateOnly);
+        const dates = buildWeekDates();
+        const from = toDateOnly(dates[0]);
+        const to = toDateOnly(dates[6]);
 
-        // settings, progress, languageId (unchanged)
+        // 2) Resolve language + settings
         const sizeSetting = await prisma.game_settings.findUnique({ where: { key: "daily_practice_size" } });
         const dailySize = Number(sizeSetting?.value) || 10;
 
         const progress = await prisma.user_progress.findUnique({ where: { user_id: userId } });
         if (!progress) return res.status(400).json({ status: false, message: "User progress not found" });
 
-        // resolve language id (same as before)
         let languageId = Number(progress.language_id);
         if (!languageId) {
             const lang = await prisma.languages.findFirst({ where: { code: progress.lang } });
@@ -75,33 +55,35 @@ const getWeek = async (req, res) => {
         }
         if (!languageId) return res.status(400).json({ status: false, message: "Learning language not resolved" });
 
-        // prevent repeats (same as before)
         const used = await prisma.practice_item.findMany({
             where: { daily_practice: { user_id: userId } },
             select: { question_id: true },
         });
         const excludeIds = used.map(u => u.question_id);
 
-        // fetch existing rows for THIS (partial) week window
         let rows = await prisma.daily_practice.findMany({
-            where: { user_id: userId, date: { in: dateObjs } },
+            where: {
+                user_id: userId,
+                date: { gte: from, lte: to },
+            },
             include: { items: true },
             orderBy: { date: "asc" },
         });
 
-        // create missing days only for remaining week window
         const have = new Set(rows.map(r => ymd(r.date)));
-        const missing = dates.filter(d => !have.has(d));
+        for (const d of dates) {
+            if (have.has(d)) continue;
+            const isFutureOrToday = !dayjs(d).isBefore(todayStr);
+            if (!isFutureOrToday) continue;
 
-        for (const d of missing) {
-            // pick questions (as before)
+            // pick questions
             const qs = await prisma.questions.findMany({
                 where: { language_id: languageId, id: { notIn: excludeIds } },
                 orderBy: { id: "asc" },
                 take: dailySize,
             });
 
-            // top-up reuse if bank small
+            // top up if bank small
             let finalQs = qs;
             if (qs.length < dailySize) {
                 const topUp = await prisma.questions.findMany({
@@ -129,12 +111,13 @@ const getWeek = async (req, res) => {
 
         rows.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-        // shape output as "practices" (same as last message, kept intact)
+        // 6) Shape UI tiles
         const map = new Map(rows.map(r => [ymd(r.date), r]));
         const practices = dates.map(d => {
             const p = map.get(d);
             const isToday = d === todayStr;
             const isFuture = dayjs(d).isAfter(todayStr);
+            const isPast = dayjs(d).isBefore(todayStr);
 
             const items = p?.items || [];
             const total = items.length;
@@ -143,14 +126,23 @@ const getWeek = async (req, res) => {
             const wrong = answered - correct;
             const skipped = items.filter(i => i.question_status === "skipped").length;
 
-            const status = p
-                ? (p.status === "completed" ? "completed" : (isFuture ? "locked" : "available"))
-                : (isFuture ? "locked" : "available");
+            let status;
+            if (p) {
+                if (p.status === "completed") status = "completed";
+                else if (isFuture) status = "locked";
+                else if (isToday) status = "available";
+                else status = "missed"; // past assigned but not completed
+            } else {
+                // no row on that day
+                if (isFuture) status = "locked";
+                else if (isToday) status = "available"; // will be lazily created on open
+                else status = "missed"; // past, no row
+            }
 
             return {
                 date: d,
                 isToday,
-                status,
+                status,                 // available | locked | completed | missed
                 practiceId: p?.id || null,
                 total,
                 done: answered,
@@ -162,9 +154,18 @@ const getWeek = async (req, res) => {
             };
         });
 
+        const PRIORITY = { available: 0, completed: 1, locked: 2, missed: 3 };
+        practices.sort((a, b) => {
+            const pa = PRIORITY[a.status] ?? 9;
+            const pb = PRIORITY[b.status] ?? 9;
+            if (pa !== pb) return pa - pb;
+            return a.date.localeCompare(b.date);
+        });
+
+
         return res.json({
             status: true,
-            message: wantFull ? "Full week (Mon–Sun) + auto-schedule" : "Remaining of this week + auto-schedule",
+            message: "This week (Mon–Sun) + auto-schedule for today/future",
             data: { practices },
         });
     } catch (err) {
