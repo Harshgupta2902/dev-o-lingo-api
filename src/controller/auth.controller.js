@@ -166,8 +166,6 @@ const submitOnboarding = async (req, res) => {
 const getUserProfile = async (req, res) => {
     try {
         const { email } = req.body;
-
-
         if (!email) {
             return res.status(400).json({ status: false, message: "email required" });
         }
@@ -190,31 +188,52 @@ const getUserProfile = async (req, res) => {
             }),
         };
 
-        // existing stats (hearts/xp/gems, etc.)
         const stats = await ensureStatsWithRefill(Number(user.id));
 
-        // ✅ 1) How many lessons completed
         const lessonsCompleted = await prisma.user_completed_lessons.count({
             where: { user_id: Number(user.id) },
         });
 
         const uaRows = await prisma.user_achievements.findMany({
             where: { user_id: Number(user.id) },
-            orderBy: { unlocked_at: 'desc' },
+            orderBy: { unlocked_at: "desc" },
             take: 12,
-            include: {
-                achievements: true
-            },
+            include: { achievements: true },
         });
 
-        // 3) Flatten to API-friendly items
-        const achievementItems = uaRows.map(a => ({
+        const achievementItems = uaRows.map((a) => ({
             id: a.id,
-            title: a.achievements?.title ?? '',        // from related table
-            description: a.achievements?.description ?? '',
-            icon_url: a.achievements?.icon_url ?? '',
-            achieved_at: shortAgo(a.unlocked_at),           // <-- rename for client
+            title: a.achievements?.title ?? "",
+            description: a.achievements?.description ?? "",
+            icon_url: a.achievements?.icon_url ?? "",
+            achieved_at: shortAgo(a.unlocked_at),
         }));
+
+        const [followers, following] = await Promise.all([
+            prisma.follows.count({ where: { following_id: Number(user.id) } }),
+            prisma.follows.count({ where: { follower_id: Number(user.id) } }),
+        ]);
+
+        const followedRows = await prisma.follows.findMany({
+            where: { follower_id: Number(user.id) },
+            select: { following_id: true },
+        });
+
+        const followedIds = followedRows.map((r) => r.following_id);
+        const excludeIds = [Number(user.id), ...followedIds];
+
+        const notFollowedUsers = await prisma.users.findMany({
+            where: {
+                id: { notIn: excludeIds },
+            },
+            select: {
+                id: true,
+                name: true,
+                profile: true,
+            },
+            orderBy: { created_at: "desc" },
+            take: 20,
+        });
 
         return res.json({
             status: true,
@@ -222,15 +241,18 @@ const getUserProfile = async (req, res) => {
             data: {
                 user: formattedUser,
                 stats,
-                lessonsCompleted,                  // 👈 NEW
-                achievements: achievementItems
-
+                lessonsCompleted,
+                achievements: achievementItems,
+                followers,
+                following,
+                notFollowedUsers, // 👈 NEW: suggestions
             },
         });
     } catch (err) {
         return res.status(500).json({ status: false, message: err.message });
     }
 };
+
 
 function shortAgo(date) {
     if (!date) return null;
@@ -257,4 +279,4 @@ function shortAgo(date) {
 
 
 
-module.exports = { socialLogin, fetchUserData, updateFcmToken, getOnboardingQuestions, submitOnboarding, getUserProfile }
+module.exports = { socialLogin, fetchUserData, updateFcmToken, getOnboardingQuestions, submitOnboarding, getUserProfile, shortAgo }

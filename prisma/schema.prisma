@@ -171,7 +171,26 @@ model users {
   user_stats           user_stats?
   daily_practices      daily_practice[]
   user_completed_lessons user_completed_lessons[]
+  followers follows[] @relation("followers") // people who follow THIS user
+  following follows[] @relation("following") // people THIS user follows
+
 }
+
+model follows {
+  id            Int      @id @default(autoincrement())
+  follower_id   Int
+  following_id  Int
+  created_at    DateTime @default(now())
+
+  // relations
+  follower  users @relation("following", fields: [follower_id], references: [id], onDelete: Cascade)
+  following users @relation("followers", fields: [following_id], references: [id], onDelete: Cascade)
+
+  @@unique([follower_id, following_id], map: "uniq_follower_following")
+  @@index([follower_id], map: "idx_follows_follower")
+  @@index([following_id], map: "idx_follows_following")
+}
+
 
 model onboarding_answers {
   id                   Int                  @id @default(autoincrement())
