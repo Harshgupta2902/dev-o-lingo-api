@@ -164,42 +164,72 @@ const submitOnboarding = async (req, res) => {
 
 const getUserProfile = async (req, res) => {
     try {
-        const { email } = req.body
+        const { email } = req.body;
+
 
         if (!email) {
-            return res.status(400).json({ status: false, message: "email required" })
+            return res.status(400).json({ status: false, message: "email required" });
         }
 
-        const user = await prisma.users.findFirst({
-            where: { email },
-        });
-
+        const user = await prisma.users.findFirst({ where: { email } });
         if (!user) {
             return res.json({
                 status: false,
                 code: "USER_NOT_FOUND",
-                message: "User not found"
-            })
+                message: "User not found",
+            });
         }
 
         const formattedUser = {
             ...user,
             created_at: new Date(user.created_at).toLocaleDateString("en-GB", {
-                day: "numeric",   // 2
-                month: "short",   // Sep
-                year: "numeric"   // 2025
-            })
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+            }),
         };
 
+        // existing stats (hearts/xp/gems, etc.)
         const stats = await ensureStatsWithRefill(Number(user.id));
+
+        // ✅ 1) How many lessons completed
+        const lessonsCompleted = await prisma.user_completed_lessons.count({
+            where: { user_id: Number(user.id) },
+        });
+
+        const uaRows = await prisma.user_achievements.findMany({
+            where: { user_id: Number(user.id) },
+            orderBy: { unlocked_at: 'desc' },
+            take: 12,
+            include: {
+                achievements: true
+            },
+        });
+
+        // 3) Flatten to API-friendly items
+        const achievementItems = uaRows.map(a => ({
+            id: a.id,
+            title: a.achievements?.title ?? '',        // from related table
+            description: a.achievements?.description ?? '',
+            icon_url: a.achievements?.icon_url ?? '',
+            achieved_at: a.unlocked_at,                // <-- rename for client
+        }));
+
         return res.json({
             status: true,
             message: "User Fetched successfully",
-            data: { user: formattedUser, stats, },
-        })
+            data: {
+                user: formattedUser,
+                stats,
+                lessonsCompleted,                  // 👈 NEW
+                achievements: achievementItems
+
+            },
+        });
     } catch (err) {
-        return res.status(500).json({ status: false, message: err.message })
+        return res.status(500).json({ status: false, message: err.message });
     }
-}
+};
+
 
 module.exports = { socialLogin, fetchUserData, updateFcmToken, getOnboardingQuestions, submitOnboarding, getUserProfile }
