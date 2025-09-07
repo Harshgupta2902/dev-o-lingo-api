@@ -81,15 +81,15 @@ const fetchUserData = async (req, res) => {
 
 const updateFcmToken = async (req, res) => {
     try {
-        const { fcm_token, email, uid } = req.body
+        const { fcm_token, email } = req.body
 
-        if (!uid || !email) {
+        if (!email) {
             return res.status(400).json({ status: false, message: "uid and email required" })
         }
 
         // Upsert user
         let user = await prisma.users.findFirst({
-            where: { uid, email }
+            where: { email }
         })
 
         await prisma.users.update({
