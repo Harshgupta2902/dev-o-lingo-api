@@ -120,21 +120,31 @@ const getExercisesbyId = async (req, res) => {
             task2: questions[0].task2,
         };
 
-        let questionList = questions.map((q) => ({
-            id: q.id,
-            language_id: q.language_id,
-            map_key: q.map_key,
-            question: q.question,
-            option_a: q.option_a,
-            option_b: q.option_b,
-            option_c: q.option_c,
-            option_d: q.option_d,
-            answer: q.answer,
-            created_at: q.created_at,
-            updated_at: q.updated_at,
-        }));
+        let questionList = questions.map((q) => {
+            const options = [
+                { key: "option_a", text: q.option_a },
+                { key: "option_b", text: q.option_b },
+                { key: "option_c", text: q.option_c },
+                { key: "option_d", text: q.option_d },
+            ];
 
-        questionList = shuffleArray(questionList);
+            const shuffled = shuffleArray(options);
+
+            return {
+                id: q.id,
+                language_id: q.language_id,
+                map_key: q.map_key,
+                question: q.question,
+                option_a: shuffled[0].text,
+                option_b: shuffled[1].text,
+                option_c: shuffled[2].text,
+                option_d: shuffled[3].text,
+                answer: q.answer,
+                created_at: q.created_at,
+                updated_at: q.updated_at,
+            };
+        });
+
 
         return res.json({
             status: true,
