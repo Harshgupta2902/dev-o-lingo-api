@@ -1,6 +1,7 @@
 const prisma = require('../prismaClient');
 const jwt = require('jsonwebtoken');
 const { ensureStatsWithRefill } = require('./progress.controller');
+const dayjs = require('dayjs');
 
 function generateToken(user) {
     return jwt.sign(
@@ -212,7 +213,7 @@ const getUserProfile = async (req, res) => {
             title: a.achievements?.title ?? '',        // from related table
             description: a.achievements?.description ?? '',
             icon_url: a.achievements?.icon_url ?? '',
-            achieved_at: a.unlocked_at,                // <-- rename for client
+            achieved_at: shortAgo(a.unlocked_at),           // <-- rename for client
         }));
 
         return res.json({
@@ -230,6 +231,30 @@ const getUserProfile = async (req, res) => {
         return res.status(500).json({ status: false, message: err.message });
     }
 };
+
+function shortAgo(date) {
+    if (!date) return null;
+    const now = dayjs();
+    const diffSec = now.diff(date, "second");
+
+    if (diffSec < 60) return `${diffSec}s ago`;
+
+    const diffMin = now.diff(date, "minute");
+    if (diffMin < 60) return `${diffMin}m ago`;
+
+    const diffHrs = now.diff(date, "hour");
+    if (diffHrs < 24) return `${diffHrs}h ago`;
+
+    const diffDays = now.diff(date, "day");
+    if (diffDays < 30) return `${diffDays}d ago`;
+
+    const diffMonths = now.diff(date, "month");
+    if (diffMonths < 12) return `${diffMonths}mo ago`;
+
+    const diffYears = now.diff(date, "year");
+    return `${diffYears}y ago`;
+}
+
 
 
 module.exports = { socialLogin, fetchUserData, updateFcmToken, getOnboardingQuestions, submitOnboarding, getUserProfile }
