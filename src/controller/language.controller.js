@@ -206,13 +206,11 @@ const submitLesson = async (req, res) => {
             });
         }
 
-        // settings map with defaults
         const settings = settingsRows.reduce((m, r) => ((m[r.key] = r.value), m), {});
         const xpPerCorrect = parseInt(settings["xp_per_correct"] ?? "10", 10);
         const gemsPerCorrect = parseInt(settings["gems_per_correct"] ?? "1", 10);
         const heartPenalty = parseInt(settings["heart_penalty"] ?? "1", 10);
 
-        // compare answers
         let correctCount = 0;
         let wrongCount = 0;
 
@@ -228,7 +226,6 @@ const submitLesson = async (req, res) => {
         const earnedXP = correctCount * xpPerCorrect;
         const earnedGems = correctCount * gemsPerCorrect;
 
-        // progress check
         const existingProgress = await prisma.user_progress.findUnique({
             where: { user_id: userId },
         });
@@ -238,14 +235,12 @@ const submitLesson = async (req, res) => {
             : null;
         const isNewLesson = !lastCompleted || lessonId > lastCompleted;
 
-        // stats update
         const existingStats = await prisma.user_stats.findUnique({ where: { user_id: userId } });
         const currentHearts = existingStats?.hearts ?? 5;
         const newHearts = Math.max(0, currentHearts - wrongCount * heartPenalty);
 
         let updatedStats;
         if (isNewLesson) {
-            // update xp + gems + hearts
             updatedStats = await prisma.user_stats.upsert({
                 where: { user_id: userId },
                 update: {
@@ -264,7 +259,6 @@ const submitLesson = async (req, res) => {
                 },
             });
 
-            // update progress
             await prisma.user_progress.upsert({
                 where: { user_id: userId },
                 update: {
@@ -279,14 +273,12 @@ const submitLesson = async (req, res) => {
                 },
             });
 
-            // ✅ Track completed lesson in new table
             await prisma.user_completed_lessons.upsert({
                 where: { user_id_lesson_id: { user_id: userId, lesson_id: lessonId } },
                 update: {},
                 create: { user_id: userId, lesson_id: lessonId },
             });
         } else {
-            // only update hearts
             updatedStats = await prisma.user_stats.update({
                 where: { user_id: userId },
                 data: {
@@ -296,7 +288,6 @@ const submitLesson = async (req, res) => {
             });
         }
 
-        // score + taglines
         const totalQuestions = questions.length;
         const percentage = Math.round((correctCount / totalQuestions) * 100);
 

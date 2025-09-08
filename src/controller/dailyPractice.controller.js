@@ -202,8 +202,6 @@ const getPracticeById = async (req, res) => {
     }
 };
 
-
-// 🔑 Submit all answers
 const submitPractice = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -306,8 +304,60 @@ const submitPractice = async (req, res) => {
     }
 };
 
+const getReviewSet = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const baseWhere = {
+            daily_practice: { user_id: userId, },
+            OR: [
+                { question_status: "skipped" },
+                { question_status: "answered", is_correct: false },
+            ],
+        };
+
+        let reviewItems = await prisma.practice_item.findMany({
+            where: baseWhere,
+            include: {
+                question: true,
+                daily_practice: { select: { id: true, date: true, status: true } },
+            },
+            orderBy: [{ id: "asc" }],
+        });
+
+        let items = reviewItems.map((it) => ({
+            itemId: it.id,
+            practiceId: it.daily_practice.id,
+            practiceDate: dayjs(it.daily_practice.date).format("YYYY-MM-DD"),
+            practiceStatus: it.daily_practice.status,
+            questionId: it.question_id,
+            type: it.question_status === "skipped" ? "skipped" : "wrong",
+            userAnswer: it.user_answer ?? null,
+            question: it.question,
+        }));
+
+        if (items.length > 1) {
+            for (let i = items.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [items[i], items[j]] = [items[j], items[i]];
+            }
+        }
+
+        return res.json({
+            status: true,
+            message: "User-wide skipped & wrong questions (all practices)",
+            data: items,
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ status: false, message: err.message });
+    }
+};
+
+
 module.exports = {
     getWeek,
     getPracticeById,
     submitPractice,
+    getReviewSet
 };
