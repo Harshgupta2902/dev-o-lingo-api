@@ -6,16 +6,22 @@ async function getSettings() {
     const rows = await prisma.game_settings.findMany();
     const map = {};
     for (const r of rows) map[r.key] = r.value;
-    // sensible fallbacks
+
     return {
         starting_gems: parseInt(map.starting_gems ?? "100", 10),
         starting_hearts: parseInt(map.starting_hearts ?? "5", 10),
         max_hearts: parseInt(map.max_hearts ?? "5", 10),
         heart_refill_time: parseInt(map.heart_refill_time ?? "15", 10), // minutes
         xp_per_lesson: parseInt(map.xp_per_lesson ?? "10", 10),
-        streak_bonus: parseInt(map.streak_bonus ?? "5", 10)
+        streak_bonus: parseInt(map.streak_bonus ?? "5", 10),
+
+        // 👇 नए keys
+        hearts_per_ad_watch: parseInt(map.hearts_per_ad_watch ?? "1", 10),
+        gems_per_ad_watch: parseInt(map.gems_per_ad_watch ?? "20", 10),
+        enable_ads: parseInt(map.enable_ads ?? "1", 10),
     };
 }
+
 
 // helper: ensure user_stats exists and apply heart auto-refill
 async function ensureStatsWithRefill(userId) {
@@ -167,4 +173,4 @@ const getUserStats = async (req, res) => {
 };
 
 
-module.exports = { ensureStatsWithRefill, ensureProgress, checkStreak, getUserStats };
+module.exports = { ensureStatsWithRefill, ensureProgress, checkStreak, getUserStats, getSettings };

@@ -2,6 +2,7 @@ const prisma = require('../prismaClient');
 const jwt = require('jsonwebtoken');
 const { ensureStatsWithRefill } = require('./progress.controller');
 const dayjs = require('dayjs');
+const { checkAchievements } = require('./achievement.controller');
 
 function generateToken(user) {
     return jwt.sign(
@@ -172,12 +173,37 @@ const getUserProfile = async (req, res) => {
 
         const user = await prisma.users.findFirst({ where: { email } });
         if (!user) {
-            return res.json({
-                status: false,
-                code: "USER_NOT_FOUND",
-                message: "User not found",
-            });
+            return res.json({ status: false, code: "USER_NOT_FOUND", message: "User not found" });
         }
+
+        await checkAchievements(Number(user.id));
+
+        const [
+            stats,
+            lessonsCompleted,
+            followersCount,
+            followingCount,
+            uaRows,
+            followedRows,
+        ] = await Promise.all([
+            ensureStatsWithRefill(Number(user.id)),
+
+            prisma.user_completed_lessons.count({ where: { user_id: Number(user.id) } }),
+
+            prisma.follows.count({ where: { following_id: Number(user.id) } }),
+            prisma.follows.count({ where: { follower_id: Number(user.id) } }),
+
+            prisma.user_achievements.findMany({
+                where: { user_id: Number(user.id) },
+                orderBy: { unlocked_at: "desc" },
+                take: 12,
+                include: { achievements: true },
+            }),
+            prisma.follows.findMany({
+                where: { follower_id: Number(user.id) },
+                select: { following_id: true },
+            }),
+        ]);
 
         const formattedUser = {
             ...user,
@@ -188,64 +214,34 @@ const getUserProfile = async (req, res) => {
             }),
         };
 
-        const stats = await ensureStatsWithRefill(Number(user.id));
-
-        const lessonsCompleted = await prisma.user_completed_lessons.count({
-            where: { user_id: Number(user.id) },
-        });
-
-        const uaRows = await prisma.user_achievements.findMany({
-            where: { user_id: Number(user.id) },
-            orderBy: { unlocked_at: "desc" },
-            take: 12,
-            include: { achievements: true },
-        });
-
         const achievementItems = uaRows.map((a) => ({
             id: a.id,
             title: a.achievements?.title ?? "",
             description: a.achievements?.description ?? "",
-            icon_url: a.achievements?.icon_url ?? "",
             achieved_at: shortAgo(a.unlocked_at),
         }));
-
-        const [followers, following] = await Promise.all([
-            prisma.follows.count({ where: { following_id: Number(user.id) } }),
-            prisma.follows.count({ where: { follower_id: Number(user.id) } }),
-        ]);
-
-        const followedRows = await prisma.follows.findMany({
-            where: { follower_id: Number(user.id) },
-            select: { following_id: true },
-        });
 
         const followedIds = followedRows.map((r) => r.following_id);
         const excludeIds = [Number(user.id), ...followedIds];
 
         const notFollowedUsers = await prisma.users.findMany({
-            where: {
-                id: { notIn: excludeIds },
-            },
-            select: {
-                id: true,
-                name: true,
-                profile: true,
-            },
+            where: { id: { notIn: excludeIds } },
+            select: { id: true, name: true, profile: true },
             orderBy: { created_at: "desc" },
             take: 20,
         });
 
         return res.json({
             status: true,
-            message: "User Fetched successfully",
+            message: "User fetched successfully",
             data: {
                 user: formattedUser,
                 stats,
                 lessonsCompleted,
                 achievements: achievementItems,
-                followers,
-                following,
-                notFollowedUsers, // 👈 NEW: suggestions
+                followers: followersCount,
+                following: followingCount,
+                notFollowedUsers,
             },
         });
     } catch (err) {
@@ -254,29 +250,62 @@ const getUserProfile = async (req, res) => {
 };
 
 
-function shortAgo(date) {
+const getMasterData = async (req, res) => {
+    try {
+        const masterData = await prisma.game_settings.findMany();
+
+        const keyWiseData = masterData.reduce((acc, item) => {
+            acc[item.key] = item;
+            return acc;
+        }, {});
+
+        return res.json({
+            status: true,
+            message: "Master Data successfully",
+            data: keyWiseData
+        });
+    } catch (err) {
+        return res.status(500).json({ status: false, message: err.message });
+    }
+};
+
+
+
+
+const shortAgo = (date) => {
     if (!date) return null;
-    const now = dayjs();
-    const diffSec = now.diff(date, "second");
+    const d = new Date(date);
+    const diff = (Date.now() - d.getTime()) / 1000;
+    if (diff < 60) return `${Math.floor(diff)}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+};
 
-    if (diffSec < 60) return `${diffSec}s ago`;
+function groupBy(arr, keyFn) {
+    return arr.reduce((acc, it) => {
+        const k = keyFn(it);
+        (acc[k] ||= []).push(it);
+        return acc;
+    }, {});
+}
 
-    const diffMin = now.diff(date, "minute");
-    if (diffMin < 60) return `${diffMin}m ago`;
-
-    const diffHrs = now.diff(date, "hour");
-    if (diffHrs < 24) return `${diffHrs}h ago`;
-
-    const diffDays = now.diff(date, "day");
-    if (diffDays < 30) return `${diffDays}d ago`;
-
-    const diffMonths = now.diff(date, "month");
-    if (diffMonths < 12) return `${diffMonths}mo ago`;
-
-    const diffYears = now.diff(date, "year");
-    return `${diffYears}y ago`;
+// Same heuristic as earlier answer:
+function deriveGroupName(a) {
+    if (a.category) return a.category;
+    if (a.type) return a.type;
+    if (a.title) {
+        const m = a.title.match(/^\s*([A-Za-z ]*?[A-Za-z])(?:\s+\d+)?\s*$/);
+        if (m && m[1]) return m[1].trim();
+    }
+    const c = (a.conditions || "").toLowerCase();
+    if (c.includes("lesson")) return "Lesson Master";
+    if (c.includes("streak")) return "Streak";
+    if (c.includes("xp")) return "XP Hunter";
+    if (c.includes("practice")) return "Practice Champ";
+    if (c.includes("correct")) return "Sharp Mind";
+    return "Misc";
 }
 
 
-
-module.exports = { socialLogin, fetchUserData, updateFcmToken, getOnboardingQuestions, submitOnboarding, getUserProfile, shortAgo }
+module.exports = { socialLogin, fetchUserData, updateFcmToken, getOnboardingQuestions, submitOnboarding, getUserProfile, shortAgo, getMasterData }
