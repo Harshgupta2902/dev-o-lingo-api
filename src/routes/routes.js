@@ -8,6 +8,7 @@ const dailyPracticeRoutes = require('./dailyPractice.routes');
 const leaderboardRoutes = require('./leaderboard.routes');
 const socialRoutes = require('./social.routes');
 const adsRoutes = require('./ads.routes');
+const shopRoutes = require('./shop.routes');
 
 router.use(authRoutes);
 router.use(homeLanguageRoutes);
@@ -16,6 +17,7 @@ router.use(dailyPracticeRoutes);
 router.use(leaderboardRoutes);
 router.use(socialRoutes);
 router.use(adsRoutes);
+router.use(shopRoutes);
 
 
 module.exports = router;

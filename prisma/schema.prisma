@@ -171,10 +171,72 @@ model users {
   user_stats           user_stats?
   daily_practices      daily_practice[]
   user_completed_lessons user_completed_lessons[]
+  orders      purchase_orders[]
+  transactions transactions[]
   followers follows[] @relation("followers") // people who follow THIS user
   following follows[] @relation("following") // people THIS user follows
-
 }
+
+
+
+model shop_items {
+  id          Int       @id @default(autoincrement())
+  sku         String    @unique
+  type        ShopItemType
+  title       String
+  description String?
+  quantity    Int?
+  price_inr   Int       @default(0)
+  currency    String    @default("INR")
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  // 🔽 back-relations with explicit names
+  purchase_orders purchase_orders[] @relation("ItemOrders")
+  transactions    transactions[]    @relation("ItemTransactions")
+}
+
+
+model purchase_orders {
+  id               Int       @id @default(autoincrement())
+  user_id          Int
+  shop_item_id     Int
+  sku              String
+  amount           Int
+  currency         String    @default("INR")
+  status           PurchaseOrderStatus    @default(draft)
+  platform         Platform?
+  platform_order_id String?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  user       users      @relation(fields: [user_id], references: [id])
+  shop_item  shop_items @relation("ItemOrders", fields: [shop_item_id], references: [id]) // 👈 name match
+  transactions transactions[]
+}
+
+model transactions {
+  id               Int       @id @default(autoincrement())
+  user_id          Int
+  order_id         Int?
+  shop_item_id     Int?
+  amount           Int
+  currency         String    @default("INR")
+  platform         String?
+  platform_token   String?
+  platform_payload String?
+  status           TransactionStatus    @default(pending)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  user      users            @relation(fields: [user_id], references: [id])
+  order     purchase_orders? @relation(fields: [order_id], references: [id])
+  shop_item shop_items?      @relation("ItemTransactions", fields: [shop_item_id], references: [id]) // 👈 name match
+}
+
+
+
 
 model follows {
   id            Int      @id @default(autoincrement())
@@ -293,4 +355,31 @@ enum users_role {
   PROFESSIONAL
   ADMIN
   LEARNER
+}
+
+enum ShopItemType {
+  gems
+  hearts
+  booster
+  subscription
+}
+
+enum PurchaseOrderStatus {
+  draft
+  pending_verification
+  completed
+  failed
+}
+
+enum TransactionStatus {
+  pending
+  success
+  failed
+  refunded
+}
+
+enum Platform {
+  playstore
+  apple
+  web
 }
