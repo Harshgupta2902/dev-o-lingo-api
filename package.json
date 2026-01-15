@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "nodemon index.js",
     "generate": "prisma generate --schema=prisma/schema.prisma",
-    "seed": "node prisma/seed.js"
+    "seed": "node prisma/seed.js",
+    "build": "nodemon index.js",
+    "start": "nodemon index.js"
   },
   "keywords": [],
   "author": "",
