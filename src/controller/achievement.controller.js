@@ -31,27 +31,32 @@ async function unlock(userId, achievementId) {
     });
 }
 
-async function evaluateCondition(userId, condition) {
-    const stats = (await prisma.user_stats.findUnique({ where: { user_id: userId } })) || {};
-    const practiceCount = await prisma.daily_practice.count({ where: { user_id: userId, status: "completed" } });
-    const correctAnswers = await prisma.practice_item.count({
-        where: { daily_practice: { user_id: userId }, is_correct: true },
-    });
-    const completedLessons = await prisma.user_completed_lessons.count({ where: { user_id: userId } });
-
+async function evaluateCondition(userId, condition, commonData) {
+    const { stats, practiceCount, correctAnswers, completedLessons } = commonData;
     const c = (condition || "").toLowerCase();
 
-    if (c.includes("lesson")) return completedLessons >= parseInt(c, 10);
-    if (c.includes("streak")) return (stats.streak || 0) >= parseInt(c, 10);
-    if (c.includes("xp")) return (stats.xp || 0) >= parseInt(c, 10);
-    if (c.includes("practice")) return practiceCount >= parseInt(c, 10);
-    if (c.includes("correct")) return correctAnswers >= parseInt(c, 10);
+    if (c.includes("lesson")) return completedLessons >= (parseInt(c.match(/\d+/)?.[0], 10) || 0);
+    if (c.includes("streak")) return (stats.streak || 0) >= (parseInt(c.match(/\d+/)?.[0], 10) || 0);
+    if (c.includes("xp")) return (stats.xp || 0) >= (parseInt(c.match(/\d+/)?.[0], 10) || 0);
+    if (c.includes("practice")) return practiceCount >= (parseInt(c.match(/\d+/)?.[0], 10) || 0);
+    if (c.includes("correct")) return correctAnswers >= (parseInt(c.match(/\d+/)?.[0], 10) || 0);
     if (c.includes("1st correct") || c.includes("first correct")) return correctAnswers > 0;
 
     return false;
 }
 
 async function checkAchievements(userId) {
+    // 1. Pre-fetch all data needed for evaluation ONCE
+    const [stats, practiceCount, correctAnswers, completedLessons] = await Promise.all([
+        prisma.user_stats.findUnique({ where: { user_id: userId } }).then(s => s || {}),
+        prisma.daily_practice.count({ where: { user_id: userId, status: "completed" } }),
+        prisma.practice_item.count({ where: { daily_practice: { user_id: userId }, is_correct: true } }),
+        prisma.user_completed_lessons.count({ where: { user_id: userId } }),
+    ]);
+
+    const commonData = { stats, practiceCount, correctAnswers, completedLessons };
+
+    // 2. Get achievements and user progress
     const allAchievements = await prisma.achievements.findMany();
     const unlocked = await prisma.user_achievements.findMany({
         where: { user_id: userId },
@@ -59,13 +64,22 @@ async function checkAchievements(userId) {
     });
     const unlockedIds = new Set(unlocked.map((u) => u.achievement_id));
 
+    // 3. Evaluate and unlock in parallel
+    const unlockPromises = [];
     for (const ach of allAchievements) {
         if (!unlockedIds.has(ach.id)) {
-            const shouldUnlock = await evaluateCondition(userId, ach.conditions);
-            if (shouldUnlock) await unlock(userId, ach.id);
+            const shouldUnlock = await evaluateCondition(userId, ach.conditions, commonData);
+            if (shouldUnlock) {
+                unlockPromises.push(unlock(userId, ach.id));
+            }
         }
     }
+
+    if (unlockPromises.length > 0) {
+        await Promise.all(unlockPromises);
+    }
 }
+
 
 const getAllAchievements = async (req, res) => {
     try {
