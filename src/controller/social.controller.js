@@ -1,5 +1,6 @@
 const prisma = require("../prismaClient");
 const { shortAgo } = require("./auth.controller");
+const { notifyUser } = require("../services/notify");
 
 
 const followUser = async (req, res) => {
@@ -14,8 +15,8 @@ const followUser = async (req, res) => {
       return res.status(400).json({ status: false, message: "You cannot follow yourself" });
     }
 
-    const exists = await prisma.users.findUnique({ where: { id: targetId }, select: { id: true } });
-    if (!exists) return res.status(404).json({ status: false, message: "Target user not found" });
+    const targetUser = await prisma.users.findUnique({ where: { id: targetId }, select: { id: true, name: true } });
+    if (!targetUser) return res.status(404).json({ status: false, message: "Target user not found" });
 
     await prisma.follows.upsert({
       where: {
@@ -30,6 +31,15 @@ const followUser = async (req, res) => {
         following_id: targetId,
       },
     });
+
+    // Trigger Notification
+    notifyUser(
+      targetId,
+      "New Follower",
+      `${req.user.name || 'Someone'} started following you!`,
+      "follow",
+      { followerId: meId }
+    ).catch(err => console.error("Follow notification error:", err));
 
     return res.json({ status: true, message: "Followed" });
   } catch (err) {
