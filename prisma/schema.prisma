@@ -177,6 +177,22 @@ model users {
   transactions transactions[]
   followers follows[] @relation("followers") // people who follow THIS user
   following follows[] @relation("following") // people THIS user follows
+  notifications notifications[]
+}
+
+model notifications {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  title       String   @db.VarChar(255)
+  message     String   @db.Text
+  type        String   @db.VarChar(50) // e.g., "achievement", "follow", "system"
+  is_read     Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  user        users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
 }
 
 

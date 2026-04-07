@@ -37,4 +37,29 @@ async function sendEmail(to, subject, html) {
     return { ok: true };
 }
 
-module.exports = { sendPushToUser, sendEmail };
+async function createNotification(userId, title, body, type) {
+    return await prisma.notifications.create({
+        data: {
+            user_id: userId,
+            title,
+            message: body,
+            type,
+        }
+    });
+}
+
+async function notifyUser(userId, title, body, type, data = {}) {
+    // 1. Save to database for in-app inbox
+    const notification = await createNotification(userId, title, body, type);
+
+    // 2. Send push notification
+    const pushResult = await sendPushToUser(userId, title, body, { 
+        ...data, 
+        notification_id: notification.id,
+        type: type
+    });
+
+    return { notification, pushResult };
+}
+
+module.exports = { sendPushToUser, sendEmail, createNotification, notifyUser };
