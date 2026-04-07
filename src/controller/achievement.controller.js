@@ -24,11 +24,26 @@ function deriveGroupName(a) {
 }
 
 async function unlock(userId, achievementId) {
-    return prisma.user_achievements.upsert({
+    const ach = await prisma.achievements.findUnique({ where: { id: achievementId } });
+    
+    const result = await prisma.user_achievements.upsert({
         where: { user_id_achievement_id: { user_id: userId, achievement_id: achievementId } },
         update: {},
         create: { user_id: userId, achievement_id: achievementId, unlocked_at: new Date() },
     });
+
+    // Trigger Notification
+    if (ach) {
+        notifyUser(
+            userId,
+            "Achievement Unlocked!",
+            `Congratulations! You've unlocked the "${ach.title}" achievement.`,
+            "achievement",
+            { achievementId: ach.id }
+        ).catch(err => console.error("Achievement notification error:", err));
+    }
+
+    return result;
 }
 
 async function evaluateCondition(userId, condition, commonData) {
