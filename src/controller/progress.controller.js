@@ -91,8 +91,12 @@ async function ensureProgress(userId) {
 
         const learningLang = lastResponse?.onboarding_answers[0]?.answer_value || "";
 
-        progress = await prisma.user_progress.create({
-            data: {
+        progress = await prisma.user_progress.upsert({
+            where: { user_id: userId },
+            update: {
+                lang: learningLang
+            },
+            create: {
                 user_id: userId,
                 lang: learningLang,
                 last_completed_lesson_id: null
