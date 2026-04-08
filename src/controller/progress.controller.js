@@ -160,27 +160,27 @@ const checkStreak = async (req, res) => {
 };
 
 const LEVELS = [
-    { level: 1,  title: 'Beginner',           min_xp: 0,     max_xp: 250,   emoji: '🐣' },
-    { level: 2,  title: 'Explorer',           min_xp: 251,   max_xp: 750,   emoji: '🔍' },
-    { level: 3,  title: 'Builder',            min_xp: 751,   max_xp: 1500,  emoji: '🔨' },
-    { level: 4,  title: 'Developer',          min_xp: 1501,  max_xp: 3000,  emoji: '💻' },
-    { level: 5,  title: 'Advanced Developer', min_xp: 3001,  max_xp: 5500,  emoji: '🚀' },
-    { level: 6,  title: 'Expert',             min_xp: 5501,  max_xp: 9000,  emoji: '🧠' },
-    { level: 7,  title: 'Specialist',         min_xp: 9001,  max_xp: 14000, emoji: '🏗' },
-    { level: 8,  title: 'Architect',          min_xp: 14001, max_xp: 21000, emoji: '💎' },
-    { level: 9,  title: 'Innovator',          min_xp: 21001, max_xp: 32000, emoji: '👑' },
-    { level: 10, title: 'Legend',             min_xp: 32001, max_xp: null,  emoji: '🔥' },
+    { level: 1, title: 'Beginner', min_xp: 0, max_xp: 250, emoji: '🐣' },
+    { level: 2, title: 'Explorer', min_xp: 251, max_xp: 750, emoji: '🔍' },
+    { level: 3, title: 'Builder', min_xp: 751, max_xp: 1500, emoji: '🔨' },
+    { level: 4, title: 'Developer', min_xp: 1501, max_xp: 3000, emoji: '💻' },
+    { level: 5, title: 'Advanced Developer', min_xp: 3001, max_xp: 5500, emoji: '🚀' },
+    { level: 6, title: 'Expert', min_xp: 5501, max_xp: 9000, emoji: '🧠' },
+    { level: 7, title: 'Specialist', min_xp: 9001, max_xp: 14000, emoji: '🏗' },
+    { level: 8, title: 'Architect', min_xp: 14001, max_xp: 21000, emoji: '💎' },
+    { level: 9, title: 'Innovator', min_xp: 21001, max_xp: 32000, emoji: '👑' },
+    { level: 10, title: 'Legend', min_xp: 32001, max_xp: null, emoji: '🔥' },
 ];
 
 function getLevelForXp(xp = 0) {
     const current = [...LEVELS].reverse().find(l => xp >= l.min_xp) || LEVELS[0];
     const next = LEVELS.find(l => l.level === current.level + 1) || null;
     return {
-        rank:          current.level,
-        title:         current.title,
-        emoji:         current.emoji,
+        rank: current.level,
+        title: current.title,
+        emoji: current.emoji,
         next_level_xp: next ? next.min_xp : null,
-        xp_to_next:    next ? Math.max(0, next.min_xp - xp) : 0,
+        xp_to_next: next ? Math.max(0, next.min_xp - xp) : 0,
     };
 }
 
@@ -188,10 +188,19 @@ const getUserStats = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        const [stats, unreadNotifications] = await Promise.all([
+        const [stats, unreadNotifications, reviewCount] = await Promise.all([
             ensureStatsWithRefill(userId),
             prisma.notifications.count({
                 where: { user_id: userId, is_read: false },
+            }),
+            prisma.practice_item.count({
+                where: {
+                    daily_practice: { user_id: userId },
+                    OR: [
+                        { question_status: "skipped" },
+                        { question_status: "answered", is_correct: false },
+                    ],
+                },
             }),
         ]);
 
@@ -202,6 +211,11 @@ const getUserStats = async (req, res) => {
                 ...stats,
                 unreadNotifications,
                 level: getLevelForXp(stats.xp || 0),
+                showHome: true,
+                showDailyPractise: false,
+                showLeaderboard: true,
+                showPractiseCenter: reviewCount > 0,
+                showProfile: true,
             }
         });
     } catch (err) {
