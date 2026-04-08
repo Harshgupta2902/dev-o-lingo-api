@@ -28,8 +28,23 @@ const getHomeLangauge = async (req, res) => {
         }
 
         const answers = user.onboarding_responses[0]?.onboarding_answers || [];
-        const learningLanguage = answers.length > 0 ? answers[0].answer_value : null;
+        let learningLanguage = answers.length > 0 ? answers[0].answer_value : null;
 
+        if (!learningLanguage) {
+            const progress = await prisma.user_progress.findUnique({
+                where: { user_id: user.id }
+            });
+            if (progress && progress.lang) {
+                learningLanguage = progress.lang;
+            }
+        }
+
+        // Fallback or explicit check
+        if (!learningLanguage) {
+            // Pick the first available language as a safe fallback
+            const firstLang = await prisma.languages.findFirst();
+            learningLanguage = firstLang?.code || "javascript";
+        }
 
         const language = await prisma.languages.findFirst({
             where: { code: learningLanguage },

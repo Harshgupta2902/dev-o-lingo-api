@@ -70,10 +70,26 @@ const fetchUserData = async (req, res) => {
             data: { token: jwtToken },
         })
 
+        // Check onboarding status
+        const onboardingResponse = await prisma.onboarding_responses.findFirst({
+            where: { user_id: user.id },
+            include: {
+                onboarding_answers: {
+                    where: { question_key: 'learningLanguage' }
+                }
+            }
+        });
+
+        const onboardingRequired = !onboardingResponse || (onboardingResponse.onboarding_answers.length === 0);
+
         return res.json({
             status: true,
             message: "User Fetched successfully",
-            data: { jwtToken, user },
+            data: { 
+                jwtToken, 
+                user,
+                onboardingRequired 
+            },
         })
     } catch (err) {
         return res.status(500).json({ status: false, message: err.message })
