@@ -1,4 +1,5 @@
 const prisma = require("../prismaClient");
+const { notifyUser } = require("../services/notify");
 
 function groupBy(arr, getKey) {
     return arr.reduce((acc, item) => {
@@ -25,7 +26,7 @@ function deriveGroupName(a) {
 
 async function unlock(userId, achievementId) {
     const ach = await prisma.achievements.findUnique({ where: { id: achievementId } });
-    
+
     const result = await prisma.user_achievements.upsert({
         where: { user_id_achievement_id: { user_id: userId, achievement_id: achievementId } },
         update: {},
