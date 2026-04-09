@@ -26,23 +26,6 @@ const getNotifications = async (req, res) => {
     }
 };
 
-const markAsRead = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const { id } = req.params;
-
-        await prisma.notifications.update({
-            where: { id: parseInt(id), user_id: userId },
-            data: { is_read: true },
-        });
-
-        return res.json({ status: true, message: "Notification marked as read" });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ status: false, message: err.message });
-    }
-};
-
 const markAllAsRead = async (req, res) => {
     try {
         const userId = req.user.id;
@@ -59,25 +42,7 @@ const markAllAsRead = async (req, res) => {
     }
 };
 
-const deleteNotification = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const { id } = req.params;
-
-        await prisma.notifications.delete({
-            where: { id: parseInt(id), user_id: userId },
-        });
-
-        return res.json({ status: true, message: "Notification deleted" });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ status: false, message: err.message });
-    }
-};
-
 module.exports = {
     getNotifications,
-    markAsRead,
     markAllAsRead,
-    deleteNotification
 };

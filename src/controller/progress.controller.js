@@ -1,7 +1,5 @@
 const prisma = require("../prismaClient");
-const { checkAchievements } = require("./achievement.controller");
 
-// helper: read settings into a map
 async function getSettings() {
     const rows = await prisma.game_settings.findMany();
     const map = {};
@@ -15,7 +13,6 @@ async function getSettings() {
         xp_per_lesson: parseInt(map.xp_per_lesson ?? "10", 10),
         streak_bonus: parseInt(map.streak_bonus ?? "5", 10),
 
-        // 👇 नए keys
         hearts_per_ad_watch: parseInt(map.hearts_per_ad_watch ?? "1", 10),
         gems_per_ad_watch: parseInt(map.gems_per_ad_watch ?? "20", 10),
         enable_ads: parseInt(map.enable_ads ?? "1", 10),
@@ -23,7 +20,6 @@ async function getSettings() {
 }
 
 
-// helper: ensure user_stats exists and apply heart auto-refill
 async function ensureStatsWithRefill(userId) {
     const s = await getSettings();
 
@@ -107,56 +103,6 @@ async function ensureProgress(userId) {
     return progress;
 }
 
-const checkStreak = async (req, res) => {
-    try {
-        const userId = req.user.id;
-
-        const stats = await ensureStatsWithRefill(userId);
-        const progress = await ensureProgress(userId);
-
-        const lastLessonDate = progress.updated_at ? new Date(progress.updated_at) : null;
-        const today = new Date();
-        const yesterday = new Date();
-        yesterday.setDate(today.getDate() - 1);
-
-        let streak = stats.streak || 0;
-
-        // Only increment if we haven't updated streak today
-        const alreadyUpdatedToday =
-            stats.last_streak_date &&
-            new Date(stats.last_streak_date).toDateString() === today.toDateString();
-
-        if (!alreadyUpdatedToday && lastLessonDate) {
-            if (
-                lastLessonDate.toDateString() === today.toDateString() ||
-                lastLessonDate.toDateString() === yesterday.toDateString()
-            ) {
-                streak += 1;
-            } else {
-                streak = 0;
-            }
-        }
-
-        const updatedStats = await prisma.user_stats.update({
-            where: { user_id: userId },
-            data: {
-                streak,
-                last_streak_date: today,
-                updated_at: today
-            }
-        });
-        await checkAchievements(userId);
-        return res.json({
-            status: true,
-            message: "Streak checked",
-            data: { streak: updatedStats.streak }
-        });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ status: false, message: err.message });
-    }
-};
-
 const LEVELS = [
     { level: 1, title: 'Beginner', min_xp: 0, max_xp: 250, emoji: '🐣' },
     { level: 2, title: 'Explorer', min_xp: 251, max_xp: 750, emoji: '🔍' },
@@ -223,4 +169,4 @@ const getUserStats = async (req, res) => {
 };
 
 
-module.exports = { ensureStatsWithRefill, ensureProgress, checkStreak, getUserStats, getSettings };
+module.exports = { ensureStatsWithRefill, ensureProgress, getUserStats, getSettings };
