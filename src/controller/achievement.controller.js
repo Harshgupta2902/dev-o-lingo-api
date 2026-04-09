@@ -1,29 +1,6 @@
 const prisma = require("../prismaClient");
 const { notifyUser } = require("../services/notify");
 
-function groupBy(arr, getKey) {
-    return arr.reduce((acc, item) => {
-        const k = getKey(item);
-        (acc[k] ||= []).push(item);
-        return acc;
-    }, {});
-}
-
-function deriveGroupName(a) {
-    if (a.category) return a.category;
-    if (a.type) return a.type;
-    if (a.title) {
-        const m = a.title.match(/^\s*([A-Za-z ]*?[A-Za-z])(?:\s+\d+)?\s*$/);
-        if (m && m[1]) return m[1].trim();
-    }
-    if (a.conditions?.toLowerCase().includes("lesson")) return "Lesson Master";
-    if (a.conditions?.toLowerCase().includes("streak")) return "Streak";
-    if (a.conditions?.toLowerCase().includes("xp")) return "XP Hunter";
-    if (a.conditions?.toLowerCase().includes("practice")) return "Practice Champ";
-    if (a.conditions?.toLowerCase().includes("correct")) return "Sharp Mind";
-    return "Misc";
-}
-
 async function unlock(userId, achievementId) {
     const ach = await prisma.achievements.findUnique({ where: { id: achievementId } });
 
@@ -97,80 +74,38 @@ async function checkAchievements(userId) {
 }
 
 
-const getAllAchievements = async (req, res) => {
+const getAchievements = async (req, res) => {
     try {
         const userId = req.user.id;
+        
+        // 1. Evaluate new achievements for the user
         await checkAchievements(userId);
 
-        const all = await prisma.achievements.findMany();
-        const unlocked = await prisma.user_achievements.findMany({
-            where: { user_id: userId },
+        // 2. Fetch all possible achievements
+        const all = await prisma.achievements.findMany({
+            orderBy: { id: 'asc' }
         });
 
-        const unlockedIds = new Set(unlocked.map((u) => u.achievement_id));
-        const merged = all.map((a) => ({
-            ...a,
-            unlocked: unlockedIds.has(a.id),
-            unlocked_at: unlocked.find((u) => u.achievement_id === a.id)?.unlocked_at || null,
-            _group: deriveGroupName(a),
-        }));
-
-        const allGrouped = groupBy(merged, (a) => a._group);
-
-        const completedOnly = merged.filter((a) => a.unlocked);
-        const completedGrouped = groupBy(completedOnly, (a) => a._group);
-
-        const summary = {};
-        for (const [g, arr] of Object.entries(allGrouped)) {
-            summary[g] = {
-                total: arr.length,
-                unlocked: arr.filter((x) => x.unlocked).length,
-            };
-        }
-
-        const stripInternal = (obj) =>
-            Object.fromEntries(
-                Object.entries(obj).map(([g, arr]) => [
-                    g,
-                    arr.map(({ _group, ...rest }) => rest),
-                ])
-            );
-
-        return res.json({
-            status: true,
-            message: "Achievements grouped",
-            data: {
-                all: stripInternal(allGrouped),
-                completed: stripInternal(completedGrouped),
-                summary: {
-                    total: merged.length,
-                    unlocked: completedOnly.length,
-                    byGroup: summary,
-                },
-            },
+        // 3. Fetch user's unlocked status
+        const unlocked = await prisma.user_achievements.findMany({ 
+            where: { user_id: userId } 
         });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ status: false, message: err.message });
-    }
-};
 
-const getUserAchievements = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        await checkAchievements(userId);
+        // 4. Create a lookup for performance
+        const unlockedMap = new Map(unlocked.map((u) => [u.achievement_id, u.unlocked_at]));
 
-        const all = await prisma.achievements.findMany();
-        const unlocked = await prisma.user_achievements.findMany({ where: { user_id: userId } });
-        const unlockedIds = new Set(unlocked.map((u) => u.achievement_id));
-
-        const merged = all.map((a) => ({
+        // 5. Merge and return
+        const data = all.map((a) => ({
             ...a,
-            unlocked: unlockedIds.has(a.id),
-            unlocked_at: unlocked.find((u) => u.achievement_id === a.id)?.unlocked_at || null,
+            unlocked: unlockedMap.has(a.id),
+            unlocked_at: unlockedMap.get(a.id) || null,
         }));
 
-        return res.json({ status: true, message: "All achievements fetched", data: merged });
+        return res.json({ 
+            status: true, 
+            message: "Achievements fetched successfully", 
+            data 
+        });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ status: false, message: err.message });
@@ -179,6 +114,5 @@ const getUserAchievements = async (req, res) => {
 
 module.exports = {
     checkAchievements,
-    getAllAchievements,
-    getUserAchievements,
+    getAchievements,
 };

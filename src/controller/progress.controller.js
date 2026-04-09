@@ -1,5 +1,5 @@
 const prisma = require("../prismaClient");
-const { checkStreakMilestone } = require("./achievement.controller");
+const { checkAchievements } = require("./achievement.controller");
 
 // helper: read settings into a map
 async function getSettings() {
@@ -145,9 +145,7 @@ const checkStreak = async (req, res) => {
                 updated_at: today
             }
         });
-        await checkStreakMilestone(userId);
-
-
+        await checkAchievements(userId);
         return res.json({
             status: true,
             message: "Streak checked",

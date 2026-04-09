@@ -10,6 +10,7 @@ const socialRoutes = require('./social.routes');
 const adsRoutes = require('./ads.routes');
 const shopRoutes = require('./shop.routes');
 const notificationRoutes = require('./notification.routes');
+const achievementRoutes = require('./achievement.routes');
 
 router.use(authRoutes);
 router.use(homeLanguageRoutes);
@@ -20,6 +21,7 @@ router.use(socialRoutes);
 router.use(adsRoutes);
 router.use(shopRoutes);
 router.use(notificationRoutes);
+router.use(achievementRoutes);
 
 
 module.exports = router;
