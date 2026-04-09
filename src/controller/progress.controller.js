@@ -156,7 +156,7 @@ const getUserStats = async (req, res) => {
                 unreadNotifications,
                 level: getLevelForXp(stats.xp || 0),
                 showHome: true,
-                showDailyPractise: false,
+                showDailyPractise: true,
                 showLeaderboard: true,
                 showPractiseCenter: reviewCount > 0,
                 showProfile: true,
