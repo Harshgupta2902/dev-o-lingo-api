@@ -178,6 +178,10 @@ model users {
   followers follows[] @relation("followers") // people who follow THIS user
   following follows[] @relation("following") // people THIS user follows
   notifications notifications[]
+  blocks_initiated blocks[] @relation("blocker")
+  blocks_received  blocks[] @relation("blocked")
+  reports_initiated reports[] @relation("reporter")
+  reports_received  reports[] @relation("reported")
 }
 
 model notifications {
@@ -400,4 +404,32 @@ enum Platform {
   playstore
   apple
   web
+}
+
+model blocks {
+  id           Int      @id @default(autoincrement())
+  blocker_id   Int
+  blocked_id   Int
+  created_at   DateTime @default(now())
+
+  blocker      users    @relation("blocker", fields: [blocker_id], references: [id], onDelete: Cascade)
+  blocked      users    @relation("blocked", fields: [blocked_id], references: [id], onDelete: Cascade)
+
+  @@unique([blocker_id, blocked_id])
+  @@index([blocker_id])
+  @@index([blocked_id])
+}
+
+model reports {
+  id           Int      @id @default(autoincrement())
+  reporter_id  Int
+  reported_id  Int
+  reason       String?  @db.Text
+  created_at   DateTime @default(now())
+
+  reporter     users    @relation("reporter", fields: [reporter_id], references: [id], onDelete: Cascade)
+  reported     users    @relation("reported", fields: [reported_id], references: [id], onDelete: Cascade)
+
+  @@index([reporter_id])
+  @@index([reported_id])
 }
