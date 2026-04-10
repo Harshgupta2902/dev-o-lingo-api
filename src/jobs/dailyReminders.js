@@ -1,7 +1,7 @@
 // jobs/dailyReminders.js
 const dayjs = require('dayjs');
 const prisma = require('../prismaClient');
-const { sendPushToUser } = require('../services/notify');
+const { notifyUser } = require('../services/notify');
 
 const todayKey = () => dayjs().format('YYYY-MM-DD');
 
@@ -42,7 +42,7 @@ async function sendPracticeReminders() {
   const userIds = await usersNeedingPracticeReminder();
   const title = "Time for today’s practice!";
   const body  = "Keep your learning on track—finish your daily practice now.";
-  await Promise.all(userIds.map(id => sendPushToUser(id, title, body, { type: 'practice_reminder' })));
+  await Promise.all(userIds.map(id => notifyUser(id, title, body, 'practice_reminder')));
   return { count: userIds.length };
 }
 
@@ -50,8 +50,47 @@ async function sendStreakBreakWarnings() {
   const userIds = await usersAtRiskStreakBreak();
   const title = "Your streak is at risk!";
   const body  = "Do today’s practice to keep your streak alive 🔥";
-  await Promise.all(userIds.map(id => sendPushToUser(id, title, body, { type: 'streak_warning' })));
+  await Promise.all(userIds.map(id => notifyUser(id, title, body, 'streak_warning')));
   return { count: userIds.length };
 }
 
-module.exports = { sendPracticeReminders, sendStreakBreakWarnings };
+async function sendStreakCountdownReminders() {
+  const now = dayjs();
+  const endOfDay = now.endOf('day');
+  const hoursLeft = Math.ceil(endOfDay.diff(now, 'hour', true));
+
+  // Only notify when less than 4 hours left
+  if (hoursLeft < 1 || hoursLeft >= 4) {
+    return { count: 0, reason: 'outside_window', hoursLeft };
+  }
+
+  const potentialUserIds = await usersAtRiskStreakBreak();
+  if (potentialUserIds.length === 0) return { count: 0, hoursLeft };
+
+  // Filter out users who already received a 'streak_countdown' today
+  const startOfToday = now.startOf('day').toDate();
+  const alreadyNotified = await prisma.notifications.findMany({
+    where: {
+      type: 'streak_countdown',
+      created_at: { gte: startOfToday },
+      user_id: { in: potentialUserIds }
+    },
+    select: { user_id: true }
+  });
+
+  const alreadyNotifiedIds = new Set(alreadyNotified.map(n => n.user_id));
+  const userIdsToNotify = potentialUserIds.filter(id => !alreadyNotifiedIds.has(id));
+
+  if (userIdsToNotify.length === 0) return { count: 0, hoursLeft };
+
+  const title = "Streak ending soon! 🔥";
+  const body = `Your streak ends in ${hoursLeft} ${hoursLeft === 1 ? 'hour' : 'hours'}. Complete your practice now!`;
+
+  await Promise.all(userIdsToNotify.map(id => notifyUser(id, title, body, 'streak_countdown', { 
+    hours_left: hoursLeft
+  })));
+
+  return { count: userIdsToNotify.length, hoursLeft };
+}
+
+module.exports = { sendPracticeReminders, sendStreakBreakWarnings, sendStreakCountdownReminders };

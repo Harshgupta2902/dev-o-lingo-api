@@ -1,7 +1,15 @@
 // jobs/scheduler.js
 const cron = require('node-cron');
-const { sendPracticeReminders, sendStreakBreakWarnings } = require('./dailyReminders');
+const { sendPracticeReminders, sendStreakBreakWarnings, sendStreakCountdownReminders } = require('./dailyReminders');
 const { sendWeeklySummaryEmails } = require('./weeklySummary');
+
+// ⏰ Hourly streak countdown (checking if 1-6 hours left)
+cron.schedule('0 * * * *', async () => {
+  const r = await sendStreakCountdownReminders();
+  if (r.count > 0) {
+    console.log(`[Cron] streak countdown notifications sent (${r.hoursLeft}h left):`, r.count);
+  }
+});
 
 // ⏰ Daily practice reminder at 7:00 PM IST
 cron.schedule('0 19 * * *', async () => {
