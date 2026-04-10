@@ -11,6 +11,12 @@ cron.schedule('0 * * * *', async () => {
   }
 });
 
+// ⏰ Morning practice reminder at 8:00 AM IST
+cron.schedule('0 8 * * *', async () => {
+  const r = await sendPracticeReminders();
+  console.log('[Cron] morning practice reminders sent:', r.count);
+});
+
 // ⏰ Daily practice reminder at 7:00 PM IST
 cron.schedule('0 19 * * *', async () => {
   const r = await sendPracticeReminders();

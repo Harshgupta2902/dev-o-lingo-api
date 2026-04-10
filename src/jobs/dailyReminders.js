@@ -40,8 +40,8 @@ async function usersAtRiskStreakBreak() {
 
 async function sendPracticeReminders() {
   const userIds = await usersNeedingPracticeReminder();
-  const title = "Time for today’s practice!";
-  const body  = "Keep your learning on track—finish your daily practice now.";
+  const title = "Daily practice available! 📚";
+  const body  = "Start your day with a quick practice and keep your momentum going.";
   await Promise.all(userIds.map(id => notifyUser(id, title, body, 'practice_reminder')));
   return { count: userIds.length };
 }
