@@ -169,4 +169,46 @@ const getUserStats = async (req, res) => {
 };
 
 
-module.exports = { ensureStatsWithRefill, ensureProgress, getUserStats, getSettings };
+const getPublicUserStats = async (req, res) => {
+    try {
+        const meId = req.user.id;
+        const targetId = Number(req.query.userId);
+
+        if (!targetId) return res.status(400).json({ status: false, message: "userId required" });
+
+        const [user, stats, followerCount, followingCount, isFollowing] = await Promise.all([
+            prisma.users.findUnique({ where: { id: targetId }, select: { id: true, name: true, profile: true } }),
+            prisma.user_stats.findUnique({ where: { user_id: targetId } }),
+            prisma.follows.count({ where: { following_id: targetId } }),
+            prisma.follows.count({ where: { follower_id: targetId } }),
+            prisma.follows.findUnique({
+                where: { follower_id_following_id: { follower_id: meId, following_id: targetId } }
+            })
+        ]);
+
+        if (!user) return res.status(404).json({ status: false, message: "User not found" });
+
+        return res.json({
+            status: true,
+            message: "Public Stats Fetched",
+            data: {
+                id: user.id,
+                name: user.name,
+                profile: user.profile,
+                xp: stats?.xp || 0,
+                streak: stats?.streak || 0,
+                gems: stats?.gems || 0,
+                hearts: stats?.hearts || 5,
+                level: getLevelForXp(stats?.xp || 0),
+                followerCount,
+                followingCount,
+                isFollowing: !!isFollowing
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ status: false, message: err.message });
+    }
+};
+
+module.exports = { ensureStatsWithRefill, ensureProgress, getUserStats, getSettings, getPublicUserStats };

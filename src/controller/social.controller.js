@@ -133,6 +133,74 @@ const getFollowing = async (req, res) => {
     return res.status(500).json({ status: false, message: err.message });
   }
 };
+const blockUser = async (req, res) => {
+  try {
+    const meId = Number(req.user.id);
+    const targetId = Number(req.body.targetUserId);
+    if (!targetId) return res.status(400).json({ status: false, message: "targetUserId required" });
+
+    await prisma.blocks.upsert({
+      where: { blocker_id_blocked_id: { blocker_id: meId, blocked_id: targetId } },
+      update: {},
+      create: { blocker_id: meId, blocked_id: targetId }
+    });
+
+    // Also unfollow automatically
+    await prisma.follows.deleteMany({
+      where: {
+        OR: [
+          { follower_id: meId, following_id: targetId },
+          { follower_id: targetId, following_id: meId }
+        ]
+      }
+    });
+
+    return res.json({ status: true, message: "User blocked successfully" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ status: false, message: err.message });
+  }
+};
+
+const reportUser = async (req, res) => {
+  try {
+    const meId = Number(req.user.id);
+    const targetId = Number(req.body.targetUserId);
+    const reason = req.body.reason || "No reason provided";
+
+    if (!targetId) return res.status(400).json({ status: false, message: "targetUserId required" });
+
+    await prisma.reports.create({
+      data: {
+        reporter_id: meId,
+        reported_id: targetId,
+        reason: reason
+      }
+    });
+
+    return res.json({ status: true, message: "User reported successfully" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ status: false, message: err.message });
+  }
+};
+const removeFollower = async (req, res) => {
+  try {
+    const meId = Number(req.user.id);
+    const targetId = Number(req.body.targetUserId);
+    if (!targetId) return res.status(400).json({ status: false, message: "targetUserId required" });
+
+    // Delete the follow where targetUser is following me
+    await prisma.follows.deleteMany({
+      where: { follower_id: targetId, following_id: meId },
+    });
+
+    return res.json({ status: true, message: "Follower removed" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ status: false, message: err.message });
+  }
+};
 
 
 module.exports = {
@@ -140,4 +208,7 @@ module.exports = {
   unfollowUser,
   getFollowers,
   getFollowing,
+  blockUser,
+  reportUser,
+  removeFollower,
 };
