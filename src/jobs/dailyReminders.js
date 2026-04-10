@@ -93,4 +93,73 @@ async function sendStreakCountdownReminders() {
   return { count: userIdsToNotify.length, hoursLeft };
 }
 
-module.exports = { sendPracticeReminders, sendStreakBreakWarnings, sendStreakCountdownReminders };
+async function sendReengagementReminders() {
+  const now = dayjs();
+  
+  // Get all users with stats and their last re-engagement notification
+  const users = await prisma.users.findMany({
+    include: {
+      user_stats: true,
+      notifications: {
+        where: { type: 'reengagement' },
+        orderBy: { created_at: 'desc' },
+        take: 1
+      }
+    }
+  });
+
+  let sentCount = 0;
+
+  for (const user of users) {
+    if (!user.user_stats) continue;
+
+    const lastActive = dayjs(user.user_stats.updated_at);
+    const hoursInactive = now.diff(lastActive, 'hour');
+    const daysInactive = now.diff(lastActive, 'day');
+    
+    const lastNotif = user.notifications[0];
+    const hoursSinceNotif = lastNotif ? now.diff(dayjs(lastNotif.created_at), 'hour') : 999999;
+    const daysSinceNotif = lastNotif ? now.diff(dayjs(lastNotif.created_at), 'day') : 999999;
+
+    let title = "";
+    let body = "";
+
+    // Buckets: 20h, 7d, 14d, 21d, 28d, 60d, 90d...
+    if (daysInactive >= 90 && daysSinceNotif >= 28) {
+      title = "It's been 3 months! 🌟";
+      body = `Welcome back, ${user.name}! We've missed you. Come see what's new!`;
+    } else if (daysInactive >= 60 && daysSinceNotif >= 28) {
+      title = "Two months away? 🕰️";
+      body = `Time flies, ${user.name}! Pick up where you left off today.`;
+    } else if (daysInactive >= 28 && daysSinceNotif >= 6) {
+      title = "One month milestone! 🏗️";
+      body = `It's been a month, ${user.name}. Don't let your skills get rusty!`;
+    } else if (daysInactive >= 21 && daysSinceNotif >= 6) {
+      title = "3 weeks already? 🔍";
+      body = `Hey ${user.name}, your learning journey is waiting for you!`;
+    } else if (daysInactive >= 14 && daysSinceNotif >= 6) {
+      title = "2 weeks break? 🐣";
+      body = `Welcome back, ${user.name}! A quick practice will keep your momentum.`;
+    } else if (daysInactive >= 7 && daysSinceNotif >= 6) {
+      title = "A week has passed! 📅";
+      body = `It's been a week, ${user.name}. Ready for some daily practice?`;
+    } else if (hoursInactive >= 20 && !lastNotif && hoursInactive < 48) {
+      title = "We miss you! ❤️";
+      body = `Hey ${user.name}, it's been a while. Ready for a quick practice?`;
+    }
+
+    if (title) {
+      await notifyUser(user.id, title, body, 'reengagement');
+      sentCount++;
+    }
+  }
+
+  return { count: sentCount };
+}
+
+module.exports = { 
+  sendPracticeReminders, 
+  sendStreakBreakWarnings, 
+  sendStreakCountdownReminders,
+  sendReengagementReminders 
+};

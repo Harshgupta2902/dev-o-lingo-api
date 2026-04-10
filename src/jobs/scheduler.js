@@ -1,7 +1,18 @@
 // jobs/scheduler.js
 const cron = require('node-cron');
-const { sendPracticeReminders, sendStreakBreakWarnings, sendStreakCountdownReminders } = require('./dailyReminders');
+const { 
+  sendPracticeReminders, 
+  sendStreakBreakWarnings, 
+  sendStreakCountdownReminders,
+  sendReengagementReminders 
+} = require('./dailyReminders');
 const { sendWeeklySummaryEmails } = require('./weeklySummary');
+
+// ⏰ Daily re-engagement check at 12:00 PM IST
+cron.schedule('0 12 * * *', async () => {
+  const r = await sendReengagementReminders();
+  console.log('[Cron] re-engagement messages sent:', r.count);
+});
 
 // ⏰ Hourly streak countdown (checking if 1-6 hours left)
 cron.schedule('0 * * * *', async () => {
